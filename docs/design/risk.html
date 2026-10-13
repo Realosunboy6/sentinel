@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk report — Sentinel</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mark">S</span> Sentinel</a>
+    <nav class="nav-links">
+      <a href="dashboard.html">Analyze</a>
+      <a href="risk.html" class="active">Risk</a>
+      <a href="optimize.html">Optimize</a>
+      <a href="tools.html">All tools</a>
+    </nav>
+    <div class="nav-cta"><span style="color:#8fa1b8;font-size:13px">No account needed</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="page-head">
+    <h1>RiskLens report</h1>
+    <span class="meta">K5 weights as entered &middot; history Jan 2021 – Oct 2026</span>
+  </div>
+
+  <!-- Current risk: the four headline numbers -->
+  <div class="kpis">
+    <div class="kpi"><div class="label">95% VaR (daily)</div><div class="value">1.54%</div>
+      <div class="sub">historical, of portfolio value</div></div>
+    <div class="kpi"><div class="label">99% VaR (daily)</div><div class="value">2.30%</div>
+      <div class="sub">historical</div></div>
+    <div class="kpi"><div class="label">95% Expected shortfall</div><div class="value">2.00%</div>
+      <div class="sub">average loss beyond VaR</div></div>
+    <div class="kpi"><div class="label">Basel traffic light</div>
+      <div class="value"><span class="light"><span class="dot dot-green"></span>GREEN</span></div>
+      <div class="sub">VaR backtest exceptions in range</div></div>
+  </div>
+
+  <!-- Return distribution with the VaR line: the risk page's signature visual -->
+  <div class="panel" style="margin-bottom:20px">
+    <div class="chart-head"><h2>Daily return distribution</h2>
+      <span style="color:var(--muted);font-size:12.5px">red bars = worst 5% of days</span></div>
+    <svg viewBox="0 0 720 200" class="chart" role="img"><rect x="14" y="186" width="22" height="4" rx="2" fill="#dc2626" opacity="0.85"/><rect x="41" y="189" width="22" height="1" rx="2" fill="#dc2626" opacity="0.85"/><rect x="68" y="184" width="22" height="6" rx="2" fill="#dc2626" opacity="0.85"/><rect x="95" y="185" width="22" height="5" rx="2" fill="#dc2626" opacity="0.85"/><rect x="122" y="178" width="22" height="12" rx="2" fill="#dc2626" opacity="0.85"/><rect x="149" y="166" width="22" height="24" rx="2" fill="#dc2626" opacity="0.85"/><rect x="176" y="158" width="22" height="32" rx="2" fill="#dc2626" opacity="0.85"/><rect x="203" y="128" width="22" height="62" rx="2" fill="#1a3355" opacity="0.85"/><rect x="230" y="108" width="22" height="82" rx="2" fill="#1a3355" opacity="0.85"/><rect x="257" y="91" width="22" height="99" rx="2" fill="#1a3355" opacity="0.85"/><rect x="284" y="103" width="22" height="87" rx="2" fill="#1a3355" opacity="0.85"/><rect x="311" y="64" width="22" height="126" rx="2" fill="#1a3355" opacity="0.85"/><rect x="338" y="37" width="22" height="153" rx="2" fill="#1a3355" opacity="0.85"/><rect x="365" y="60" width="22" height="130" rx="2" fill="#1a3355" opacity="0.85"/><rect x="392" y="30" width="22" height="160" rx="2" fill="#1a3355" opacity="0.85"/><rect x="419" y="59" width="22" height="131" rx="2" fill="#1a3355" opacity="0.85"/><rect x="446" y="91" width="22" height="99" rx="2" fill="#1a3355" opacity="0.85"/><rect x="473" y="102" width="22" height="88" rx="2" fill="#1a3355" opacity="0.85"/><rect x="500" y="121" width="22" height="69" rx="2" fill="#1a3355" opacity="0.85"/><rect x="527" y="130" width="22" height="60" rx="2" fill="#1a3355" opacity="0.85"/><rect x="554" y="159" width="22" height="31" rx="2" fill="#1a3355" opacity="0.85"/><rect x="581" y="174" width="22" height="16" rx="2" fill="#1a3355" opacity="0.85"/><rect x="608" y="178" width="22" height="12" rx="2" fill="#1a3355" opacity="0.85"/><rect x="635" y="179" width="22" height="11" rx="2" fill="#1a3355" opacity="0.85"/><rect x="662" y="188" width="22" height="2" rx="2" fill="#1a3355" opacity="0.85"/><rect x="689" y="187" width="22" height="3" rx="2" fill="#1a3355" opacity="0.85"/><line x1="194" y1="8" x2="194" y2="190" stroke="#dc2626" stroke-width="2" stroke-dasharray="4 3"/><text x="200" y="20" font-size="11" fill="#dc2626" font-weight="700">95% VaR</text></svg>
+    <p style="color:var(--muted);font-size:13px;margin-top:8px">
+      Worst single day: <strong class="down">-3.11%</strong> &middot;
+      best day: <strong class="up">3.68%</strong>.</p>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="chart-head"><h2>Drawdown</h2></div>
+      <svg viewBox="0 0 720 170" class="chart" role="img"><polygon points="6,10 6.0,6.0 16.3,6.0 26.5,6.0 36.8,6.0 47.0,9.6 57.3,21.0 67.6,6.0 77.8,6.0 88.1,6.0 98.3,41.1 108.6,6.0 118.9,6.0 129.1,6.0 139.4,9.4 149.7,39.1 159.9,39.2 170.2,33.3 180.4,13.6 190.7,64.2 201.0,59.3 211.2,60.6 221.5,80.9 231.7,113.9 242.0,100.0 252.3,126.7 262.5,129.9 272.8,133.9 283.0,147.7 293.3,152.3 303.6,144.7 313.8,120.8 324.1,116.7 334.3,114.6 344.6,100.3 354.9,83.0 365.1,72.0 375.4,57.2 385.7,27.4 395.9,22.1 406.2,31.6 416.4,6.0 426.7,6.0 437.0,6.0 447.2,19.3 457.5,30.8 467.7,20.5 478.0,49.7 488.3,42.0 498.5,21.2 508.8,35.6 519.0,6.0 529.3,6.0 539.6,6.0 549.8,6.0 560.1,6.0 570.3,14.6 580.6,6.0 590.9,6.0 601.1,27.4 611.4,18.4 621.7,11.8 631.9,6.0 642.2,18.4 652.4,9.1 662.7,6.0 673.0,9.6 683.2,6.0 693.5,6.0 703.7,6.0 714.0,6.0 714,10" fill="#dc2626" opacity="0.14"/><polyline points="6.0,6.0 16.3,6.0 26.5,6.0 36.8,6.0 47.0,9.6 57.3,21.0 67.6,6.0 77.8,6.0 88.1,6.0 98.3,41.1 108.6,6.0 118.9,6.0 129.1,6.0 139.4,9.4 149.7,39.1 159.9,39.2 170.2,33.3 180.4,13.6 190.7,64.2 201.0,59.3 211.2,60.6 221.5,80.9 231.7,113.9 242.0,100.0 252.3,126.7 262.5,129.9 272.8,133.9 283.0,147.7 293.3,152.3 303.6,144.7 313.8,120.8 324.1,116.7 334.3,114.6 344.6,100.3 354.9,83.0 365.1,72.0 375.4,57.2 385.7,27.4 395.9,22.1 406.2,31.6 416.4,6.0 426.7,6.0 437.0,6.0 447.2,19.3 457.5,30.8 467.7,20.5 478.0,49.7 488.3,42.0 498.5,21.2 508.8,35.6 519.0,6.0 529.3,6.0 539.6,6.0 549.8,6.0 560.1,6.0 570.3,14.6 580.6,6.0 590.9,6.0 601.1,27.4 611.4,18.4 621.7,11.8 631.9,6.0 642.2,18.4 652.4,9.1 662.7,6.0 673.0,9.6 683.2,6.0 693.5,6.0 703.7,6.0 714.0,6.0" fill="none" style="stroke:#dc2626;stroke-width:1.8"/></svg>
+      <p style="color:var(--muted);font-size:13px;margin-top:8px">
+        Maximum drawdown <strong class="down">-31.6%</strong> — the 2022 bear market.
+        Regime-conditional VaR below shows why the stressed column matters.</p>
+    </div>
+    <div class="panel">
+      <div class="chart-head"><h2>Regime</h2></div>
+      <p style="margin-bottom:10px">Current volatility regime:
+        <span class="badge badge-calm">CALM</span></p>
+      <table class="data">
+        <tr><th>Window</th><th class="num">VaR 95%</th></tr>
+        <tr><td>Calm-regime history</td><td class="num">1.35%</td></tr>
+        <tr><td>Stressed-regime history</td><td class="num">1.68%</td></tr>
+        <tr><td>Full sample</td><td class="num">1.54%</td></tr>
+      </table>
+      <p style="color:var(--muted);font-size:13px;margin-top:12px">
+        Stressed-regime VaR is the conservative number: how bad the tail has been
+        <em>in past stress</em>, not diluted by calm years.</p>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="chart-head"><h2>Tail diagnostics</h2></div>
+      <table class="data">
+        <tr><th>Test</th><th class="num">Value</th></tr>
+        <tr><td>Skewness</td><td class="num">-0.06</td></tr>
+        <tr><td>Excess kurtosis</td><td class="num">0.22</td></tr>
+        <tr><td>Jarque–Bera p-value</td><td class="num">0.150</td></tr>
+        <tr><td>Hill tail index</td><td class="num">0.198</td></tr>
+      </table>
+      <p style="color:var(--muted);font-size:13px;margin-top:12px">
+        Jarque–Bera p &gt; 0.05: daily returns are not rejected as normal on this sample —
+        the Hill index still prices a fat left tail, which is why ES is reported next to VaR.</p>
+    </div>
+    <div class="panel">
+      <div class="chart-head"><h2>Stress scenarios</h2></div>
+      <table class="data">
+        <tr><th>Scenario</th><th class="num">Portfolio</th></tr>
+        <tr><td>Mar 2020 COVID crash (replay)</td><td class="num">-18.4%</td></tr>
+        <tr><td>2022 bear (replay)</td><td class="num down">-31.6%</td></tr>
+        <tr><td>Rates +200bp shock</td><td class="num">-6.2%</td></tr>
+        <tr><td>Vol ×2.5 regime shift</td><td class="num">-9.8%</td></tr>
+      </table>
+      <p style="color:var(--muted);font-size:13px;margin-top:12px">
+        Historical replays apply each episode's actual asset moves to your weights.</p>
+    </div>
+  </div>
+
+  <!-- Drift check: optional second input — target weights vs current weights -->
+  <div class="panel" style="margin-bottom:32px">
+    <h2>Drift vs target — <span class="badge badge-green">WITHIN BAND</span></h2>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:14px">
+      Optional: enter a target allocation and Sentinel measures how far the current
+      weights have drifted. Threshold: all |drift| &le; 5% and all relative drift &le; 25%.</p>
+    <table class="data">
+      <tr><th>Symbol</th><th class="num">Current wt</th><th class="num">Target wt</th>
+          <th class="num">Drift</th><th class="num">Trade</th></tr>
+      <tr><td><strong>MCK</strong></td><td class="num">29.92%</td><td class="num">29.98%</td>
+          <td class="num">−0.06 pp</td><td class="num">—</td></tr>
+      <tr><td><strong>LLY</strong></td><td class="num">23.74%</td><td class="num">23.55%</td>
+          <td class="num">+0.19 pp</td><td class="num">—</td></tr>
+      <tr><td><strong>PWR</strong></td><td class="num">18.91%</td><td class="num">19.06%</td>
+          <td class="num">−0.15 pp</td><td class="num">—</td></tr>
+      <tr><td><strong>NVDA</strong></td><td class="num">15.61%</td><td class="num">15.61%</td>
+          <td class="num">0.00 pp</td><td class="num">—</td></tr>
+      <tr><td><strong>STX</strong></td><td class="num">11.82%</td><td class="num">11.80%</td>
+          <td class="num">+0.02 pp</td><td class="num">—</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>&copy; 2026 Sentinel. Educational tool — not investment advice. Past performance does not predict future returns.</span>
+    <span>Methodology &middot; Security &middot; Contact</span>
+  </div>
+</footer>
+
+</body>
+</html>
