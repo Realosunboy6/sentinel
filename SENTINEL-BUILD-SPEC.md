@@ -35,8 +35,10 @@ with a signature interactive chart for every tool.
    Synthetic data is acceptable only inside clearly-labeled unit tests.
 4. **Requests never call the market-data source.** All analysis reads from
    the local `price_history` cache, refreshed by a nightly job (§6).
-5. **The analysis engine is the owner's private `portlab` package.** Its
-   source must never be committed to this (public) repo (§5).
+5. **The analysis engine is `portlab`, now a public MIT library**
+   (`Realosunboy6/portlab`, v0.1.0 core). Install it as a pinned
+   dependency — never vendor or copy its source into this repo (§5).
+   Its remaining private modules stay private; see the §5 phasing note.
 6. **Design language (from VISUAL-SPEC.md):** navy `#10233f` chrome, page
    background `#f6f8fb`, white cards (10px radius, 1px `#e2e8f0` border,
    soft shadow), emerald `#0e9f6e` accent/positive, red `#dc2626`
@@ -74,7 +76,7 @@ Browser ──► Django (pages + JSON endpoints)
                 │            analysis_results, presets)
                 │
                 └── engine adapter (sentinel/engine.py)
-                        └── portlab (private package, §5)
+                        └── portlab (public package, §5)
 
 Nightly job (cron / management command):
     refresh_prices ──► data source ──► price_history + corporate_actions
@@ -111,17 +113,28 @@ sentinel/
 
 ## 5. Engine integration — portlab (READ CAREFULLY)
 
-portlab lives in the owner's **private** repo
-(`Realosunboy6/free-portfolio-visualizer`, package `portlab`). Sentinel is
-public. Therefore:
+**Amendment 2026-10-12 — the engine core is public.** portlab's
+verified core is published as its own public MIT repo
+(`Realosunboy6/portlab`, v0.1.0): `metrics`, `returns`, `covariance`,
+`risk` (var/backtest/tail/regime), `backtest`, `optimize`,
+`attribution`, `rebalance`. Therefore:
 
-- **Never** copy portlab source into this repo, not even a single module.
+- **Never** copy portlab source into this repo, not even a single
+  module — install it as a dependency instead.
 - Access pattern (DEFAULT): an adapter module `apps/analysis/engine.py`
-  that is the *only* place importing `portlab`. Locally it imports an
-  installed portlab (pip install from a local path / private git URL via
-  deploy token at deploy time — §11). All engine calls go through the
-  adapter, which converts Django-side inputs (symbols, weights, dates)
-  to portlab's pandas inputs and converts results to JSON-safe dicts.
+  that is the *only* place importing `portlab`. Install pinned from
+  the public repo (`pip install
+  git+https://github.com/Realosunboy6/portlab.git@v0.1.0` until a PyPI
+  release exists). All engine calls go through the adapter, which
+  converts Django-side inputs (symbols, weights, dates) to portlab's
+  pandas inputs and converts results to JSON-safe dicts.
+- **Held back (not in the public core yet):** `montecarlo`, `factor`,
+  `alm`, `derivatives`, `indicators`, `tactical`, `forecast`, `stress`,
+  `scenarios`, `taxlots`, `taxopt`, `mpo`, `analytics`, `data`,
+  `plots`, `report`, and `risk.monitor` / `risk.rebalance`. Engine-map
+  rows naming them describe later phases (see the §12 M4 note) — do
+  not request them from the owner and do not reimplement them locally
+  without asking.
 - If portlab is not importable, the site must fail closed with a clear
   "engine unavailable" page — never fabricate numbers.
 
@@ -299,11 +312,10 @@ are not acceptable anywhere.
 ## 11. Deployment (DEFAULT)
 
 Single small VM or container host: Django (gunicorn) + PostgreSQL +
-nightly `refresh_prices` cron. portlab installed at deploy time from
-the private repo using a read-only deploy key/token stored as a host
-secret — never in this repo, never in the image layers committed
-anywhere public. Environment via `.env` (DB URL, secret key, data
-source settings). HTTPS via the platform's standard terminator.
+nightly `refresh_prices` cron. portlab installs from its public repo
+at a pinned version — no deploy keys or private tokens are involved.
+Environment via `.env` (DB URL, secret key, data source settings).
+HTTPS via the platform's standard terminator.
 Nightly job logs to a table or file the admin can inspect; a failed
 refresh must not take the site down (yesterday's cache keeps serving,
 vintage label shows the stale date).
@@ -331,8 +343,16 @@ vintage label shows the stale date).
   optimization + risk parity tool pages. *Gate: max-Sharpe weights
   match a direct portlab call to 1e-4.*
 - **M4 — Remaining tools.** Tools 1, 4–19 of §8, gallery page, each
-  with signature visual + table. *Gate: every card on `/tools` leads
-  to a working page; screenshot pass vs `shots/`.*
+  with signature visual + table. **Phasing (per the §5 amendment):**
+  build first the tools the public core fully covers (backtest,
+  correlations, rolling metrics, attribution, risk parity). Tools
+  whose engine modules are still private (Monte Carlo, goals,
+  factors, tactical, rolling optimization, ALM, options, technical,
+  forecast, stress, tax, drawdown episodes) ship after the
+  corresponding public portlab release — mark their gallery cards
+  "coming with a later portlab release" rather than building
+  substitutes. *Gate: every covered card leads to a working page;
+  screenshot pass vs `shots/`.*
 - **M5 — Hardening + deploy.** Error/edge pass (§10), cache behavior
   under refresh, deploy per §11, README with run/deploy instructions.
   *Gate: owner walkthrough on the deployed URL.*
