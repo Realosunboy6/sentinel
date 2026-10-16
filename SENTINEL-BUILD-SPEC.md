@@ -1,9 +1,9 @@
-# Sentinel — Build Specification for Bob
+# Sentinel: Build Specification for Bob
 
 **What this document is.** The complete build brief for Sentinel, a public
 portfolio risk analyzer. It is written to be dropped into the root of the
 `sentinel` repo and executed milestone by milestone. Sections marked
-**LOCKED** are decisions already made by the owner — implement them, do not
+**LOCKED** are decisions already made by the owner. Implement them, do not
 relitigate. Sections marked **DEFAULT** are recommendations with a stated
 default: follow the default unless the owner overrides in chat.
 
@@ -19,14 +19,14 @@ visual contract; the schema files are the database contract.
 
 ## 1. Product definition
 
-Sentinel is a Portfolio Visualizer–class web app with a deeper risk engine:
+Sentinel is a Portfolio Visualizer-class web app with a deeper risk engine:
 a visitor enters **tickers + weights**, presses Analyze, and gets
 institutional-grade performance, risk, backtest, and optimization analysis
 with a signature interactive chart for every tool.
 
 ### Hard constraints (LOCKED)
 
-1. **No login, no accounts, no brokerage connection, no user money — ever.**
+1. **No login, no accounts, no brokerage connection, no user money, ever.**
    There is no `users` table and there must never be one. The input is
    tickers + weights only. Do not build auth "for later."
 2. **Every tool ships with at least one signature interactive visual**
@@ -36,9 +36,11 @@ with a signature interactive chart for every tool.
 4. **Requests never call the market-data source.** All analysis reads from
    the local `price_history` cache, refreshed by a nightly job (§6).
 5. **The analysis engine is `portlab`, now a public MIT library**
-   (`Realosunboy6/portlab`, v0.1.0 core). Install it as a pinned
-   dependency — never vendor or copy its source into this repo (§5).
-   Its remaining private modules stay private; see the §5 phasing note.
+   (`Realosunboy6/portlab`, pinned at `portlab==0.2.2` on PyPI).
+   Install it as a pinned dependency, never vendor or copy its
+   source into this repo (§5). As of the 2026-10-16 amendment (§5)
+   the library is complete: every module this spec names is in the
+   pinned release, and no tool is phased or held back.
 6. **Design language (from VISUAL-SPEC.md):** navy `#10233f` chrome, page
    background `#f6f8fb`, white cards (10px radius, 1px `#e2e8f0` border,
    soft shadow), emerald `#0e9f6e` accent/positive, red `#dc2626`
@@ -48,7 +50,7 @@ with a signature interactive chart for every tool.
 
 ## 2. Stack (DEFAULT)
 
-- **Framework: Django 5 (Python 3.12)** — one monolith: server-rendered
+- **Framework: Django 5 (Python 3.12)**: one monolith: server-rendered
   pages (templates), Django ORM over the schema in §6, Django migrations
   generated from `sentinel-schema.sql`, built-in admin for `presets` and
   `securities` curation. Rationale: the schema is relational and already
@@ -59,8 +61,8 @@ with a signature interactive chart for every tool.
 - **Database: PostgreSQL 15+** exactly per `sentinel-schema.sql`.
 - **Charts: Apache ECharts** (single vendored JS file, no build step),
   fed by JSON payloads rendered server-side (§9). It covers every visual
-  in the matrix — line/area, bars, heatmaps, scatter/frontier, fan
-  charts, waterfall — with the required hover crosshairs and tooltips.
+  in the matrix: line/area, bars, heatmaps, scatter/frontier, fan
+  charts, waterfall, with the required hover crosshairs and tooltips.
 - **No frontend framework, no bundler in v1.** Django templates + ECharts
   + the design package's `styles.css` as the base stylesheet.
 - **Tests: pytest + pytest-django.** Playwright for smoke/screenshot
@@ -88,7 +90,7 @@ holdings, normalize weights) → `input_hash = sha256(canonical JSON)` →
 look up `analysis_results(input_hash, data_asof = latest price date)` →
 hit: render from cache; miss: load adjusted prices from `price_history`,
 build returns, call the engine, store metrics JSON, render. Every results
-page displays the data vintage ("history Jan 2021 – Oct 2026").
+page displays the data vintage ("history Jan 2021 to Oct 2026").
 
 ## 4. Repository layout (build exactly this shape)
 
@@ -111,56 +113,58 @@ sentinel/
   tests/
 ```
 
-## 5. Engine integration — portlab (READ CAREFULLY)
+## 5. Engine integration: portlab (READ CAREFULLY)
 
-**Amendment 2026-10-12 — the engine core is public.** portlab's
-verified core is published as its own public MIT repo
-(`Realosunboy6/portlab`, v0.1.0): `metrics`, `returns`, `covariance`,
-`risk` (var/backtest/tail/regime), `backtest`, `optimize`,
-`attribution`, `rebalance`. Therefore:
+**Amendment 2026-10-16: the engine is complete and on PyPI.**
+portlab 0.2.0 (2026-10-16) published the complete toolkit, and 0.2.2
+is the current release. The full module set is public: `metrics`,
+`returns`, `covariance`, `risk` (var/backtest/tail/regime/monitor/
+rebalance), `backtest`, `optimize`, `attribution`, `rebalance`,
+`montecarlo`, `factor`, `alm`, `derivatives`, `indicators`,
+`tactical`, `forecast`, `stress`, `scenarios`, `taxlots`, `taxopt`,
+`mpo`, `analytics`, `data`, `plots`, `report`. This supersedes the
+2026-10-12 amendment (which published a v0.1.0 core and held the
+rest back) in every respect where they differ. Therefore:
 
 - **Never** copy portlab source into this repo, not even a single
-  module — install it as a dependency instead.
+  module: install it as a dependency instead.
 - Access pattern (DEFAULT): an adapter module `apps/analysis/engine.py`
   that is the *only* place importing `portlab`. Install pinned from
-  the public repo (`pip install
-  git+https://github.com/Realosunboy6/portlab.git@v0.1.0` until a PyPI
-  release exists). All engine calls go through the adapter, which
-  converts Django-side inputs (symbols, weights, dates) to portlab's
-  pandas inputs and converts results to JSON-safe dicts.
-- **Held back (not in the public core yet):** `montecarlo`, `factor`,
-  `alm`, `derivatives`, `indicators`, `tactical`, `forecast`, `stress`,
-  `scenarios`, `taxlots`, `taxopt`, `mpo`, `analytics`, `data`,
-  `plots`, `report`, and `risk.monitor` / `risk.rebalance`. Engine-map
-  rows naming them describe later phases (see the §12 M4 note) — do
-  not request them from the owner and do not reimplement them locally
-  without asking.
+  PyPI: `pip install portlab==0.2.2` (add the `opt` extra,
+  `portlab[opt]==0.2.2`, for the cvxpy solver backend). All engine
+  calls go through the adapter, which converts Django-side inputs
+  (symbols, weights, dates) to portlab's pandas inputs and converts
+  results to JSON-safe dicts.
+- **Nothing is held back.** Every module named in the engine map
+  below is in the pinned release. Build every tool in §8; do not
+  mark any gallery card "coming with a later portlab release" and
+  do not build substitutes for engine functionality.
 - If portlab is not importable, the site must fail closed with a clear
-  "engine unavailable" page — never fabricate numbers.
+  "engine unavailable" page: never fabricate numbers.
 
 ### Engine map (tool → portlab module)
 
 | Need | portlab entry points |
 |---|---|
 | Performance metrics | `portlab.metrics` (returns, vol, Sharpe, Sortino, max DD, CAGR) |
-| VaR / ES family | `portlab.risk.var` — `historical_var`, `parametric_var`, `parametric_var_t`, `cornish_fisher_var`, `expected_shortfall`, `garch_var` |
-| VaR backtests | `portlab.risk.backtest` — `exceptions`, `kupiec_pof`, `christoffersen_ind`, `joint_test`, `basel_traffic_light` |
-| Regime | `portlab.risk.regime` — `detect_regime`, `regime_var`, `ewma_vol` |
-| Tail diagnostics | `portlab.risk.tail` (Jarque–Bera, Hill) |
-| Optimization | `portlab.optimize` (max-Sharpe, GMV, risk parity, min-CVaR, Black–Litterman, HRP where available) |
+| VaR / ES family | `portlab.risk.var`: `historical_var`, `parametric_var`, `parametric_var_t`, `cornish_fisher_var`, `expected_shortfall`, `garch_var` |
+| VaR backtests | `portlab.risk.backtest`: `exceptions`, `kupiec_pof`, `christoffersen_ind`, `joint_test`, `basel_traffic_light` |
+| Regime | `portlab.risk.regime`: `detect_regime`, `regime_var`, `ewma_vol` |
+| Tail diagnostics | `portlab.risk.tail` (Jarque-Bera, Hill) |
+| Optimization | `portlab.optimize` (max-Sharpe, GMV, risk parity, min-CVaR, Black-Litterman, HRP where available) |
 | Backtest engine | `portlab.backtest` (rebalancing backtests) |
 | Monte Carlo | `portlab.montecarlo` |
 | Factor analysis | `portlab.factor` |
 | Attribution | `portlab.attribution` (Brinson) |
-| Asset–liability | `portlab.alm` |
-| Options | `portlab.derivatives` (Black–Scholes, Greeks, payoff) |
+| Asset-liability | `portlab.alm` |
+| Options | `portlab.derivatives` (Black-Scholes, Greeks, payoff) |
 | Indicators / tactical | `portlab.indicators`, `portlab.tactical` |
 | Forecasting | `portlab.forecast` (ARIMA/ETS) |
 | Stress / scenarios | `portlab.stress`, `portlab.scenarios` |
 | Tax | `portlab.taxlots`, `portlab.taxopt` |
-| Covariance | `portlab.covariance` (incl. Ledoit–Wolf) |
+| Covariance | `portlab.covariance` (incl. Ledoit-Wolf) |
 
-### Engine conventions — do not relearn these the hard way
+### Engine conventions: do not relearn these the hard way
 
 1. **`alpha` means different things in different modules.** In
    `portlab.metrics.*` and `optimize.cvar`, `alpha` is a *confidence
@@ -181,7 +185,7 @@ verified core is published as its own public MIT repo
 5. **Forecast alignment:** rolling estimators stamp day *t* with a
    forecast built from data strictly before *t*. Do not "fix" this.
 6. **Verified anchors** (SPY, real data, for golden tests): rolling-250
-   historical VaR backtest — 1,703 scored days, 86 exceptions, Kupiec
+   historical VaR backtest: 1,703 scored days, 86 exceptions, Kupiec
    LR 0.009; Christoffersen counts 1542/74/74/12, LR_ind 10.589773;
    joint LR 10.5987. Max-Sharpe vs PyPortfolioOpt matched to 5.7e-5.
 
@@ -196,7 +200,7 @@ structure: `securities`, `price_history`, `corporate_actions`,
 - `analyses` has **no identity columns** and never will. `slug` is a
   short random token (≥6 chars, base62) for share URLs `/a/<slug>`.
 - Share links (DEFAULT): **DB slugs** (the schema's design), not
-  weights-in-URL — links stay short and results cache by hash.
+  weights-in-URL: links stay short and results cache by hash.
 - Price depth (DEFAULT): cache **maximum available history** per
   security (the source reaches back decades); the analyzer defaults to
   a 10-year window and says so.
@@ -213,7 +217,7 @@ structure: `securities`, `price_history`, `corporate_actions`,
   and `corporate_actions` (splits/dividends). Adjusted close is what
   returns are built from.
 - The results cache is keyed `(input_hash, data_asof)`; a nightly
-  refresh simply makes new keys — old rows are never mutated.
+  refresh simply makes new keys; old rows are never mutated.
 
 ## 7. Pages and routes
 
@@ -223,16 +227,16 @@ structure: `securities`, `price_history`, `corporate_actions`,
 | `/analyze` | Analyzer (dashboard): input form + full results | `dashboard.html` |
 | `/risk` | RiskLens report for the current analysis | `risk.html` |
 | `/optimize` | Optimizer: method picker, frontier, weights table | `optimize.html` |
-| `/tools` | Tool gallery — one card per tool in §8 | `tools.html` |
+| `/tools` | Tool gallery: one card per tool in §8 | `tools.html` |
 | `/tools/<slug>` | Individual tool page (form + signature visual + table) | per §8 |
 | `/a/<slug>` | Shared analysis (read-only render of a stored analysis) | = `/analyze` results |
-| `/api/tickers?q=` | Ticker autocomplete (from `securities` + source lookup) | — |
-| `/api/analyze` | POST analysis input → JSON metrics + chart payloads | — |
+| `/api/tickers?q=` | Ticker autocomplete (from `securities` + source lookup) | n/a |
+| `/api/analyze` | POST analysis input → JSON metrics + chart payloads | n/a |
 
 **Portfolio input form (shared component, used by Analyzer and tools):**
 dynamic rows of (ticker, weight %); add/remove row; benchmark selector
 (default SPY); start-date selector (default 10y); **validation:**
-1–25 holdings; tickers must resolve; weights must be ≥ 0 and sum to
+1-25 holdings; tickers must resolve; weights must be ≥ 0 and sum to
 100 ± 0.5 (offer one-click Normalize); duplicate tickers merge with a
 notice. Errors are inline, specific, and never a stack trace.
 
@@ -245,10 +249,10 @@ regime badge. **Risk page:** current VaR/ES (95/99), return histogram
 with VaR line, Basel traffic light, Kupiec/Christoffersen/joint table,
 tail diagnostics, regime panel. **Young-history states are designed:**
 when history is short, panels render with the one-line explanation
-(e.g. "backtests need 250+ observations") instead of NaNs or blanks —
+(e.g. "backtests need 250+ observations") instead of NaNs or blanks:
 mirror portlab's RiskLens behavior.
 
-## 8. Tool inventory (19 — every one with its signature visual)
+## 8. Tool inventory (19, every one with its signature visual)
 
 Build order within §12 milestones. "PV" = Portfolio Visualizer also has
 it; "ours" = Sentinel-only differentiator.
@@ -264,7 +268,7 @@ it; "ours" = Sentinel-only differentiator.
 | 7 | Tactical allocation | /tools/tactical | tactical, indicators | Price vs MA signal chart | Yes |
 | 8 | Rolling optimization | /tools/rolling-optimization | optimize, mpo | Stacked rolling-weights area | Yes |
 | 9 | Rolling metrics | /tools/rolling-metrics | metrics, risk.var | Rolling Sharpe/vol lines | Yes |
-| 10 | Asset–liability | /tools/alm | alm | Assets vs liabilities + funded ratio | ours |
+| 10 | Asset-liability | /tools/alm | alm | Assets vs liabilities + funded ratio | ours |
 | 11 | Options | /tools/options | derivatives | Payoff diagram | ours |
 | 12 | Technical analysis | /tools/technical | indicators | Price + Bollinger, RSI/MACD panels | ours |
 | 13 | Forecast | /tools/forecast | forecast | Forecast fan (widening cone) | ours |
@@ -313,7 +317,7 @@ are not acceptable anywhere.
 
 Single small VM or container host: Django (gunicorn) + PostgreSQL +
 nightly `refresh_prices` cron. portlab installs from its public repo
-at a pinned version — no deploy keys or private tokens are involved.
+at a pinned version; no deploy keys or private tokens are involved.
 Environment via `.env` (DB URL, secret key, data source settings).
 HTTPS via the platform's standard terminator.
 Nightly job logs to a table or file the admin can inspect; a failed
@@ -322,38 +326,35 @@ vintage label shows the stale date).
 
 ## 12. Milestones (execute in order; stop for owner review at each gate)
 
-- **M0 — Scaffold + data layer.** Repo layout §4, Django project, schema
+- **M0: Scaffold + data layer.** Repo layout §4, Django project, schema
   migrated, `PriceSource` + nightly refresh working for a seed universe
   (the 12 tickers in `docs/design/snippets/metrics.json` context: SPY,
   QQQ, BND, AAPL, MSFT, IWM, GLD, MCK, LLY, PWR, NVDA, STX), admin
   enabled. *Gate: `pytest` green; a page lists securities with price
   counts and latest dates.*
-- **M1 — Analyzer core.** Input form + validation, engine adapter,
+- **M1: Analyzer core.** Input form + validation, engine adapter,
   results cache, Analyzer page with all §7 sections and interactive
-  charts, share links `/a/<slug>`, presets seeded. *Gate: golden test —
+  charts, share links `/a/<slug>`, presets seeded. *Gate: golden test:
   the K5 preset reproduces `snippets/metrics.json` values within
   tolerance; SPY anchors (§5.6) pass.*
-- **M2 — RiskLens + backtests.** `/risk` complete: VaR/ES family,
+- **M2: RiskLens + backtests.** `/risk` complete: VaR/ES family,
   histogram + VaR line, traffic light, Kupiec/Christoffersen/joint
   (nullable-exceptions handling per §5.3), tail diagnostics, regime,
   young-history states. *Gate: SPY backtest anchors (§5.6) reproduced
   through the web stack.*
-- **M3 — Optimizer.** `/optimize`: method picker (max-Sharpe, GMV,
+- **M3: Optimizer.** `/optimize`: method picker (max-Sharpe, GMV,
   risk parity, min-CVaR, BL), frontier + dot, weights table, rolling
   optimization + risk parity tool pages. *Gate: max-Sharpe weights
   match a direct portlab call to 1e-4.*
-- **M4 — Remaining tools.** Tools 1, 4–19 of §8, gallery page, each
-  with signature visual + table. **Phasing (per the §5 amendment):**
-  build first the tools the public core fully covers (backtest,
-  correlations, rolling metrics, attribution, risk parity). Tools
-  whose engine modules are still private (Monte Carlo, goals,
-  factors, tactical, rolling optimization, ALM, options, technical,
-  forecast, stress, tax, drawdown episodes) ship after the
-  corresponding public portlab release — mark their gallery cards
-  "coming with a later portlab release" rather than building
-  substitutes. *Gate: every covered card leads to a working page;
-  screenshot pass vs `shots/`.*
-- **M5 — Hardening + deploy.** Error/edge pass (§10), cache behavior
+- **M4: Remaining tools.** Tools 1, 4-19 of §8, gallery page, each
+  with signature visual + table. **No phasing (per the 2026-10-16
+  §5 amendment):** the pinned portlab release covers every engine
+  module, so all remaining tools build in this milestone, including
+  Monte Carlo, goals, factors, tactical, rolling optimization, ALM,
+  options, technical, forecast, stress, tax, and drawdown episodes.
+  No gallery card is marked "coming later". *Gate: every card leads
+  to a working page; screenshot pass vs `shots/`.*
+- **M5: Hardening + deploy.** Error/edge pass (§10), cache behavior
   under refresh, deploy per §11, README with run/deploy instructions.
   *Gate: owner walkthrough on the deployed URL.*
 
@@ -363,7 +364,7 @@ vintage label shows the stale date).
   portlab directly on fixed real-data fixtures (prices CSV in
   `tests/fixtures/`), tolerances stated per test.
 - Golden numbers: `docs/design/snippets/metrics.json` (mock dataset)
-  and the SPY anchors (§5.6) as regression tests — a red golden test
+  and the SPY anchors (§5.6) as regression tests: a red golden test
   means the build changed a number, which is a stop-and-report event.
 - Page smoke tests: every route in §7/§8 returns 200 with its chart
   payload present, for the K5 preset.
@@ -378,7 +379,7 @@ vintage label shows the stale date).
 2. **Atomic steps** (Coder mode): one coherent change at a time; run
    the relevant tests after each; a failing test stops the line.
 3. **Review like an auditor** (Reviewer mode): at each gate, report
-   what was verified, with numbers — not "done."
+   what was verified, with numbers, not "done."
 4. **Commits** are authored `Ibrahim Oyeyinka
    <ibrahimoyeyinka@yahoo.com>`, small and descriptive.
 5. **Never push without the owner's explicit "Push"** in that moment.
@@ -386,7 +387,7 @@ vintage label shows the stale date).
 6. **Never** add login/accounts/brokerage features, never commit
    portlab source, never put synthetic data in a production path,
    never silence a failing golden test by editing the expected value.
-7. When a spec item and the code disagree, stop and ask — do not
+7. When a spec item and the code disagree, stop and ask; do not
    improvise around a LOCKED item.
 
 ---
