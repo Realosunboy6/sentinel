@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Sentinel{% endblock %}</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+  <style>
+    /* Minimal chrome overrides for the nav bar */
+    .sentinel-nav {
+      background: #10233f;
+      color: #fff;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      height: 52px;
+      gap: 2rem;
+    }
+    .sentinel-nav a {
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .sentinel-nav a:hover { color: #fff; }
+    .sentinel-nav .brand {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    .page-container {
+      max-width: 960px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <nav class="sentinel-nav">
+    <a href="/" class="brand">Sentinel</a>
+    <a href="/securities/">Securities</a>
+    <a href="/admin/">Admin</a>
+  </nav>
+
+  <div class="page-container">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

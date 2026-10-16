@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Securities — Sentinel{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.5rem;font-weight:700;margin-bottom:0.25rem;">Tracked Securities</h1>
+<p style="color:#57606a;font-size:0.875rem;margin-bottom:1.5rem;">
+  {{ securities|length }} securit{{ securities|length|pluralize:"y,ies" }} in the price-history cache.
+</p>
+
+{% if securities %}
+<table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+  <thead>
+    <tr style="border-bottom:2px solid #e2e8f0;text-align:left;">
+      <th style="padding:0.5rem 0.75rem;">Symbol</th>
+      <th style="padding:0.5rem 0.75rem;">Exchange</th>
+      <th style="padding:0.5rem 0.75rem;">Asset type</th>
+      <th style="padding:0.5rem 0.75rem;text-align:right;font-variant-numeric:tabular-nums;">Price rows</th>
+      <th style="padding:0.5rem 0.75rem;text-align:right;font-variant-numeric:tabular-nums;">Latest date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for sec in securities %}
+    <tr style="border-bottom:1px solid #e2e8f0;">
+      <td style="padding:0.5rem 0.75rem;font-weight:600;">{{ sec.symbol }}</td>
+      <td style="padding:0.5rem 0.75rem;color:#57606a;">{{ sec.exchange|default:"—" }}</td>
+      <td style="padding:0.5rem 0.75rem;color:#57606a;">{{ sec.get_asset_type_display }}</td>
+      <td style="padding:0.5rem 0.75rem;text-align:right;font-variant-numeric:tabular-nums;">
+        {{ sec.price_count|default:"0" }}
+      </td>
+      <td style="padding:0.5rem 0.75rem;text-align:right;font-variant-numeric:tabular-nums;color:#57606a;">
+        {{ sec.latest_date|default:"—" }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#57606a;">
+  No securities have been ingested yet. Run:
+  <br><br>
+  <code>python manage.py refresh_prices --symbols SPY QQQ BND AAPL MSFT IWM GLD MCK LLY PWR NVDA STX</code>
+</p>
+{% endif %}
+{% endblock %}
