@@ -396,3 +396,232 @@ def _worst_year(annual: dict) -> list:
         return []
     worst = min(annual, key=annual.get)
     return [worst, annual[worst]]
+
+
+# ---------------------------------------------------------------------------
+# RiskLens entry point
+# ---------------------------------------------------------------------------
+
+# Minimum scored days needed for a meaningful backtest (one full rolling window
+# plus enough scored days for the LR tests to be asymptotically valid).
+_MIN_BACKTEST_SCORED = 250
+
+
+def run_risklens(
+    port_returns: pd.Series,
+    tail_alpha: float = 0.05,
+    backtest_window: int = 250,
+) -> dict:
+    """
+    Compute the full RiskLens report for a portfolio return series.
+
+    Parameters
+    ----------
+    port_returns:
+        Daily simple returns Series with a DatetimeIndex (or date index,
+        converted internally).
+    tail_alpha:
+        Tail probability (default 0.05 → 95% confidence).
+    backtest_window:
+        Rolling window for the historical VaR backtest (default 250).
+
+    Returns
+    -------
+    dict with keys: var_table, backtest, regime, tail, histogram, data_vintage.
+    All VaR values are positive = loss (spec §5.2).
+    """
+    try:
+        import portlab.risk.var as pl_var
+        import portlab.risk.backtest as pl_bt
+        import portlab.risk.tail as pl_tail
+        import portlab.risk.regime as pl_regime
+    except ImportError as exc:
+        raise EngineUnavailableError(
+            f"portlab is not importable: {exc}.  "
+            "Install it with: pip install portlab[opt]==0.2.2"
+        ) from exc
+
+    try:
+        return _run_risklens(
+            port_returns, tail_alpha, backtest_window,
+            pl_var, pl_bt, pl_tail, pl_regime,
+        )
+    except EngineUnavailableError:
+        raise
+    except Exception as exc:
+        logger.exception("engine.run_risklens failed")
+        raise EngineUnavailableError(f"RiskLens engine error: {exc}") from exc
+
+
+def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_tail, pl_regime):
+    # Ensure DatetimeIndex
+    returns = port_returns.copy()
+    if not isinstance(returns.index, pd.DatetimeIndex):
+        returns.index = pd.to_datetime(returns.index)
+
+    n = len(returns)
+    alpha99 = 0.01  # tail probability for 99% VaR
+
+    # ------------------------------------------------------------------
+    # Full-sample point-in-time VaR / ES (last value of rolling series)
+    # ------------------------------------------------------------------
+    hist_var95  = float(pl_var.historical_var(returns, alpha=tail_alpha).iloc[-1])
+    hist_var99  = float(pl_var.historical_var(returns, alpha=alpha99).iloc[-1])
+    hist_es95   = float(pl_var.expected_shortfall(returns, alpha=tail_alpha).iloc[-1])
+
+    # Parametric (mean="constant" per spec §5.4)
+    param_var95 = float(pl_var.parametric_var(returns, alpha=tail_alpha, mean="constant").iloc[-1])
+    param_var99 = float(pl_var.parametric_var(returns, alpha=alpha99,   mean="constant").iloc[-1])
+    param_es95  = float(pl_var.expected_shortfall(returns, alpha=tail_alpha).iloc[-1])  # reuse hist ES
+
+    # Student-t parametric
+    parm_t_var95 = float(pl_var.parametric_var_t(returns, alpha=tail_alpha).iloc[-1])
+    parm_t_var99 = float(pl_var.parametric_var_t(returns, alpha=alpha99).iloc[-1])
+
+    # Cornish-Fisher
+    cf_var95 = float(pl_var.cornish_fisher_var(returns, alpha=tail_alpha).iloc[-1])
+    cf_var99 = float(pl_var.cornish_fisher_var(returns, alpha=alpha99).iloc[-1])
+
+    # GARCH (mean="zero" per spec §5.4)
+    try:
+        garch_var95 = float(pl_var.garch_var(returns, alpha=tail_alpha, window=backtest_window, mean="zero").iloc[-1])
+        garch_var99 = float(pl_var.garch_var(returns, alpha=alpha99,    window=backtest_window, mean="zero").iloc[-1])
+    except Exception as exc:
+        logger.warning("garch_var failed (%s); falling back to historical", exc)
+        garch_var95 = hist_var95
+        garch_var99 = hist_var99
+
+    var_table = [
+        {"method": "Historical",       "var95": hist_var95,   "var99": hist_var99,   "es95": hist_es95},
+        {"method": "Parametric",       "var95": param_var95,  "var99": param_var99,  "es95": None},
+        {"method": "Parametric (t)",   "var95": parm_t_var95, "var99": parm_t_var99, "es95": None},
+        {"method": "Cornish-Fisher",   "var95": cf_var95,     "var99": cf_var99,     "es95": None},
+        {"method": "GARCH",            "var95": garch_var95,  "var99": garch_var99,  "es95": None},
+    ]
+
+    # ------------------------------------------------------------------
+    # Rolling-window VaR backtest (spec §5.3: nullable-boolean handling)
+    # ------------------------------------------------------------------
+    var_series = pl_var.historical_var(returns, alpha=tail_alpha, window=backtest_window)
+    exc = pl_bt.exceptions(returns, var_series)   # nullable-boolean Series — DO NOT dropna
+
+    scored = exc.dropna()   # only for counting — not passed to backtest functions
+    n_scored    = len(scored)
+    n_exceptions = int(scored.sum())
+    young_history = n_scored < _MIN_BACKTEST_SCORED
+
+    if young_history:
+        backtest = {
+            "n_scored": n_scored,
+            "n_exceptions": n_exceptions,
+            "young_history": True,
+            "kupiec_lr": None, "kupiec_p": None, "kupiec_reject": None,
+            "chris_n00": None, "chris_n01": None, "chris_n10": None, "chris_n11": None,
+            "chris_lr": None, "chris_p": None,
+            "joint_lr": None, "joint_p": None,
+            "basel_zone": "INSUFFICIENT DATA",
+        }
+    else:
+        kup   = pl_bt.kupiec_pof(exc, alpha=tail_alpha)
+        chris = pl_bt.christoffersen_ind(exc)
+        joint = pl_bt.joint_test(exc, alpha=tail_alpha)
+        # Basel traffic light uses alpha=0.01 (99% VaR convention per Basel II/III)
+        # and n_obs = n_scored (the scored window)
+        bt_result = pl_bt.basel_traffic_light(n_exceptions, n_obs=n_scored, alpha=0.01)
+        backtest = {
+            "n_scored":       n_scored,
+            "n_exceptions":   n_exceptions,
+            "young_history":  False,
+            "kupiec_lr":      float(kup["lr_stat"]),
+            "kupiec_p":       float(kup["p_value"]),
+            "kupiec_reject":  bool(kup["reject"]),
+            "chris_n00":      int(chris["n00"]),
+            "chris_n01":      int(chris["n01"]),
+            "chris_n10":      int(chris["n10"]),
+            "chris_n11":      int(chris["n11"]),
+            "chris_lr":       float(chris["lr_stat"]),
+            "chris_p":        float(chris["p_value"]),
+            "joint_lr":       float(joint["lr_stat"]),
+            "joint_p":        float(joint["p_value"]),
+            "basel_zone":     str(bt_result.get("zone", "UNKNOWN")),
+        }
+
+    # ------------------------------------------------------------------
+    # Regime-conditional VaR
+    # ------------------------------------------------------------------
+    try:
+        regime_series = pl_regime.detect_regime(returns)
+        rv = pl_regime.regime_var(returns, alpha=tail_alpha, regime=regime_series)
+        calm_var95     = float(rv.get("calm",   rv.get("low",  hist_var95)))
+        stressed_var95 = float(rv.get("stress", rv.get("high", hist_var95)))
+        full_var95     = hist_var95
+        current_regime = str(regime_series.iloc[-1]) if hasattr(regime_series, "iloc") else "unknown"
+    except Exception as exc:
+        logger.warning("regime_var failed (%s); using full-sample VaR", exc)
+        calm_var95 = stressed_var95 = full_var95 = hist_var95
+        current_regime = "unknown"
+
+    regime = {
+        "current":      current_regime,
+        "calm_var95":   calm_var95,
+        "stressed_var95": stressed_var95,
+        "full_var95":   full_var95,
+    }
+
+    # ------------------------------------------------------------------
+    # Tail diagnostics
+    # ------------------------------------------------------------------
+    jb_result = pl_tail.jarque_bera(returns)
+    jb_p = float(jb_result.get("p_value", jb_result.get("pvalue", 0.0)))
+    k_hill = max(10, int(n ** 0.5))
+    hill_result = pl_tail.hill_estimator(returns.abs(), k=k_hill)
+    hill = float(hill_result.get("xi", hill_result.get("hill", 0.0)))
+
+    tail = {
+        "skew":     float(returns.skew()),
+        "exkurt":   float(returns.kurtosis()),
+        "jb_p":     jb_p,
+        "hill":     hill,
+        "worst_day": float(returns.min()),
+        "best_day":  float(returns.max()),
+    }
+
+    # ------------------------------------------------------------------
+    # Histogram data (pre-binned for ECharts)
+    # ------------------------------------------------------------------
+    histogram = _build_histogram(returns, hist_var95, hist_var99)
+
+    # ------------------------------------------------------------------
+    # Data vintage
+    # ------------------------------------------------------------------
+    data_vintage = {
+        "start": str(returns.index[0].date() if hasattr(returns.index[0], "date") else returns.index[0]),
+        "end":   str(returns.index[-1].date() if hasattr(returns.index[-1], "date") else returns.index[-1]),
+    }
+
+    return {
+        "var_table":    var_table,
+        "backtest":     backtest,
+        "regime":       regime,
+        "tail":         tail,
+        "histogram":    histogram,
+        "data_vintage": data_vintage,
+        # Convenience copies for the KPI bar
+        "var95":  hist_var95,
+        "var99":  hist_var99,
+        "es95":   hist_es95,
+        "basel_zone": backtest["basel_zone"],
+    }
+
+
+def _build_histogram(returns: pd.Series, var95: float, var99: float, n_bins: int = 40) -> dict:
+    """Pre-bin daily returns for the histogram chart."""
+    import numpy as np
+    counts, bin_edges = np.histogram(returns.dropna(), bins=n_bins)
+    bin_centers = [(bin_edges[i] + bin_edges[i + 1]) / 2 for i in range(n_bins)]
+    return {
+        "bins":      [round(float(c), 6) for c in bin_centers],
+        "counts":    [int(c) for c in counts],
+        "var95_line": round(float(-var95), 6),   # negative = left tail
+        "var99_line": round(float(-var99), 6),
+    }

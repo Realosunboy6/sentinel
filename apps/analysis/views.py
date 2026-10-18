@@ -1,8 +1,9 @@
 """
 Analysis views:
-  - analyze_view      GET/POST  /analyze
-  - shared_analysis   GET       /a/<slug>
-  - tickers_autocomplete GET   /api/tickers?q=
+  - analyze_view         GET/POST  /analyze
+  - shared_analysis      GET       /a/<slug>
+  - risk_view            GET       /risk?slug=<slug>
+  - tickers_autocomplete GET       /api/tickers?q=
 """
 
 from __future__ import annotations
@@ -152,6 +153,43 @@ def shared_analysis_view(request, slug):
         "asof": asof,
         "share_url": request.build_absolute_uri(),
         "data_vintage": metrics.get("data_vintage", {}),
+    })
+
+
+# ---------------------------------------------------------------------------
+# RiskLens
+# ---------------------------------------------------------------------------
+
+@require_GET
+def risk_view(request):
+    """
+    GET /risk?slug=<slug>  — full RiskLens report for the given analysis.
+    """
+    slug = request.GET.get("slug", "").strip()
+    if not slug:
+        # No slug: prompt the user to run an analysis first.
+        return render(request, "analysis/risk_no_analysis.html")
+
+    try:
+        from apps.analysis.risklens import get_risklens
+        analysis, risk_metrics, charts = get_risklens(slug)
+    except Analysis.DoesNotExist:
+        raise Http404("Analysis not found.")
+    except EngineUnavailableError:
+        return render(request, "analysis/engine_unavailable.html", status=503)
+    except Exception as exc:
+        logger.exception("risk_view: unexpected error for slug=%s", slug)
+        return render(request, "analysis/engine_unavailable.html", {
+            "error_detail": str(exc)
+        }, status=500)
+
+    asof = risk_metrics["data_vintage"]["end"]
+    return render(request, "analysis/risk.html", {
+        "analysis": analysis,
+        "risk": risk_metrics,
+        "charts_json": json.dumps(charts),
+        "asof": asof,
+        "share_url": request.build_absolute_uri(f"/a/{analysis.slug}"),
     })
 
 

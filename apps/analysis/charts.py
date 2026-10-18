@@ -371,3 +371,111 @@ def build_all_charts(metrics: dict, asof: str) -> dict[str, Any]:
             asof,
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# M2: RiskLens chart payloads
+# ---------------------------------------------------------------------------
+
+def histogram_chart(
+    bins: list[float],
+    counts: list[int],
+    var95_line: float,
+    var99_line: float,
+    asof: str,
+) -> dict[str, Any]:
+    """
+    Return-distribution histogram with VaR95 and VaR99 vertical markLines.
+    Bars left of var95_line (negative returns worse than VaR95) are red;
+    all others are navy (spec §8 signature visual for the Risk page).
+    var95_line and var99_line are negative numbers (left-tail positions).
+    """
+    bar_data = [
+        {
+            "value": c,
+            "itemStyle": {"color": "#dc2626" if b <= var95_line else "#10233f"},
+        }
+        for b, c in zip(bins, counts)
+    ]
+    return {
+        "chart": "bar",
+        "title": "Daily Return Distribution",
+        "xAxis": {
+            "data": [f"{b*100:.2f}%" for b in bins],
+            "type": "category",
+            "axisLabel": {"rotate": 45, "fontSize": 10},
+            "name": "Daily Return",
+            "nameLocation": "middle",
+            "nameGap": 50,
+        },
+        "yAxis": {"type": "value", "name": "Frequency"},
+        "tooltip": {
+            "trigger": "axis",
+            "formatter": "Return {b}<br/>Count: {c}",
+        },
+        "series": [
+            {
+                "name": "Frequency",
+                "type": "bar",
+                "data": bar_data,
+                "barCategoryGap": "2%",
+                "markLine": {
+                    "silent": True,
+                    "symbol": "none",
+                    "data": [
+                        {
+                            "xAxis": f"{var95_line*100:.2f}%",
+                            "lineStyle": {"color": "#dc2626", "type": "dashed", "width": 2},
+                            "label": {"formatter": "VaR 95%", "position": "insideEndTop"},
+                        },
+                        {
+                            "xAxis": f"{var99_line*100:.2f}%",
+                            "lineStyle": {"color": "#7f1d1d", "type": "dashed", "width": 2},
+                            "label": {"formatter": "VaR 99%", "position": "insideEndTop"},
+                        },
+                    ],
+                },
+            }
+        ],
+        "meta": {"asof": asof, "label": _asof_label(asof)},
+    }
+
+
+def regime_panel_chart(
+    calm_var95: float,
+    stressed_var95: float,
+    full_var95: float,
+    asof: str,
+) -> dict[str, Any]:
+    """
+    Three-bar chart: calm-regime / stressed-regime / full-sample VaR 95%.
+    Values are positive fractions (loss magnitudes).
+    """
+    return {
+        "chart": "bar",
+        "title": "Regime-Conditional VaR 95%",
+        "xAxis": {
+            "data": ["Calm regime", "Stressed regime", "Full sample"],
+            "type": "category",
+        },
+        "yAxis": {
+            "type": "value",
+            "axisLabel": {"formatter": "{value}%"},
+        },
+        "tooltip": {
+            "trigger": "axis",
+            "formatter": "{b}: {c}%",
+        },
+        "series": [
+            {
+                "name": "VaR 95%",
+                "type": "bar",
+                "data": [
+                    {"value": round(calm_var95 * 100, 3),     "itemStyle": {"color": "#0e9f6e"}},
+                    {"value": round(stressed_var95 * 100, 3), "itemStyle": {"color": "#dc2626"}},
+                    {"value": round(full_var95 * 100, 3),     "itemStyle": {"color": "#10233f"}},
+                ],
+            }
+        ],
+        "meta": {"asof": asof, "label": _asof_label(asof)},
+    }

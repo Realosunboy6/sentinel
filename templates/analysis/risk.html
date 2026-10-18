@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% load static sentinel_filters %}
+
+{% block title %}RiskLens — {{ analysis.slug }} — Sentinel{% endblock %}
+
+{% block extra_head %}
+<style>
+  .kpi-row { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+  .kpi { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:1rem 1.25rem; min-width:150px; flex:1; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .kpi .label { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#57606a; margin-bottom:.25rem; }
+  .kpi .value { font-size:1.4rem; font-weight:700; font-variant-numeric:tabular-nums; color:#1f2328; }
+  .kpi .value.down { color:#dc2626; }
+  .kpi .sub { font-size:.75rem; color:#57606a; margin-top:.2rem; }
+  .chart-panel { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:1.25rem; margin-bottom:1.25rem; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .chart-panel h3 { font-size:.875rem; font-weight:600; color:#1f2328; margin:0 0 .75rem; }
+  .chart-panel .vintage { font-size:.72rem; color:#57606a; margin-top:.5rem; }
+  .echarts-div { width:100%; height:300px; }
+  .echarts-div.sm { height:220px; }
+  .risk-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  .risk-table th,.risk-table td { padding:.45rem .75rem; text-align:right; border-bottom:1px solid #f1f5f9; font-variant-numeric:tabular-nums; }
+  .risk-table th { font-weight:600; font-size:.75rem; color:#57606a; text-transform:uppercase; background:#f7f8fa; }
+  .risk-table td:first-child,.risk-table th:first-child { text-align:left; }
+  .up { color:#0e9f6e; } .dn { color:#dc2626; }
+  .cols-2 { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+  @media (max-width:720px) { .cols-2 { grid-template-columns:1fr; } }
+  /* Basel traffic light */
+  .tl-green  { background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:6px; padding:.2rem .6rem; font-weight:700; font-size:.8rem; }
+  .tl-yellow { background:#fffbeb; color:#92400e; border:1px solid #fde68a; border-radius:6px; padding:.2rem .6rem; font-weight:700; font-size:.8rem; }
+  .tl-red    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:6px; padding:.2rem .6rem; font-weight:700; font-size:.8rem; }
+  .tl-na     { background:#f7f8fa; color:#57606a; border:1px solid #e2e8f0; border-radius:6px; padding:.2rem .6rem; font-weight:700; font-size:.8rem; }
+  .regime-badge { display:inline-flex; align-items:center; gap:.4rem; padding:.3rem .75rem; border-radius:20px; font-size:.8rem; font-weight:600; }
+  .regime-bull    { background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; }
+  .regime-bear    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+  .regime-neutral { background:#f7f8fa; color:#57606a; border:1px solid #e2e8f0; }
+  .young-history-note { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:.75rem 1rem; font-size:.85rem; color:#92400e; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head" style="margin-bottom:1rem">
+  <h1>RiskLens report</h1>
+  <span class="meta">
+    {% if risk.data_vintage.start and risk.data_vintage.end %}
+      {{ risk.data_vintage.start }} – {{ risk.data_vintage.end }}
+    {% endif %}
+    &middot; <a href="/a/{{ analysis.slug }}" style="color:#3b82d4">View full analysis</a>
+  </span>
+</div>
+
+<!-- ============================================================ -->
+<!-- KPI cards: VaR95, VaR99, ES95, Basel traffic light           -->
+<!-- ============================================================ -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="label">95% VaR (daily)</div>
+    <div class="value">{{ risk.var95|pct:2 }}%</div>
+    <div class="sub">historical, of portfolio value</div>
+  </div>
+  <div class="kpi">
+    <div class="label">99% VaR (daily)</div>
+    <div class="value">{{ risk.var99|pct:2 }}%</div>
+    <div class="sub">historical</div>
+  </div>
+  <div class="kpi">
+    <div class="label">95% Expected shortfall</div>
+    <div class="value">{{ risk.es95|pct:2 }}%</div>
+    <div class="sub">average loss beyond VaR</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Basel traffic light</div>
+    <div class="value">
+      {% with zone=risk.basel_zone %}
+      {% if zone == "GREEN" or zone == "green" %}<span class="tl-green">&#9679; GREEN</span>
+      {% elif zone == "YELLOW" or zone == "yellow" %}<span class="tl-yellow">&#9679; YELLOW</span>
+      {% elif zone == "RED" or zone == "red" %}<span class="tl-red">&#9679; RED</span>
+      {% else %}<span class="tl-na">{{ zone }}</span>{% endif %}
+      {% endwith %}
+    </div>
+    <div class="sub">VaR backtest exceptions</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Signature visual: return distribution histogram + VaR lines  -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>Daily return distribution</h3>
+  <div class="echarts-div" id="chart-histogram" style="height:320px"></div>
+  <p style="color:#57606a;font-size:.8rem;margin-top:.5rem">
+    Red bars = returns worse than 95% VaR.
+    Worst day: <strong class="dn">{{ risk.tail.worst_day|pct:2 }}%</strong> &middot;
+    Best day: <strong class="up">{{ risk.tail.best_day|pct:2 }}%</strong>
+  </p>
+  <div class="vintage">{{ asof }}</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Drawdown area | Regime panel                                  -->
+<!-- ============================================================ -->
+<div class="cols-2">
+  <div class="chart-panel">
+    <h3>Regime</h3>
+    <p style="margin-bottom:.75rem;font-size:.875rem">
+      Current regime:
+      <span class="regime-badge {% if 'bull' in risk.regime.current|lower %}regime-bull{% elif 'bear' in risk.regime.current|lower or 'stress' in risk.regime.current|lower %}regime-bear{% else %}regime-neutral{% endif %}">
+        {{ risk.regime.current }}
+      </span>
+    </p>
+    <div class="echarts-div sm" id="chart-regime"></div>
+    <table class="risk-table" style="margin-top:.75rem">
+      <thead><tr><th>Window</th><th>VaR 95%</th></tr></thead>
+      <tbody>
+        <tr><td>Calm-regime history</td><td>{{ risk.regime.calm_var95|pct:2 }}%</td></tr>
+        <tr><td>Stressed-regime history</td><td>{{ risk.regime.stressed_var95|pct:2 }}%</td></tr>
+        <tr><td>Full sample</td><td>{{ risk.regime.full_var95|pct:2 }}%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Tail diagnostics                                             -->
+  <!-- ============================================================ -->
+  <div class="chart-panel">
+    <h3>Tail diagnostics</h3>
+    <table class="risk-table">
+      <thead><tr><th>Test</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Skewness</td><td>{{ risk.tail.skew|floatformat:3 }}</td></tr>
+        <tr><td>Excess kurtosis</td><td>{{ risk.tail.exkurt|floatformat:3 }}</td></tr>
+        <tr><td>Jarque–Bera p-value</td><td>{{ risk.tail.jb_p|floatformat:3 }}</td></tr>
+        <tr><td>Hill tail index</td><td>{{ risk.tail.hill|floatformat:3 }}</td></tr>
+      </tbody>
+    </table>
+    <p style="color:#57606a;font-size:.8rem;margin-top:.75rem">
+      {% if risk.tail.jb_p > 0.05 %}
+        Jarque–Bera p &gt; 0.05: daily returns are not rejected as normal on this sample.
+      {% else %}
+        Jarque–Bera p ≤ 0.05: daily returns show significant non-normality.
+      {% endif %}
+      Hill index &gt; 0 confirms fat-tailed behaviour; ES is reported alongside VaR.
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VaR method comparison table                                  -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>VaR methods comparison</h3>
+  <table class="risk-table">
+    <thead>
+      <tr><th>Method</th><th>VaR 95%</th><th>VaR 99%</th><th>ES 95%</th></tr>
+    </thead>
+    <tbody>
+      {% for row in risk.var_table %}
+      <tr>
+        <td>{{ row.method }}</td>
+        <td>{{ row.var95|pct:3 }}%</td>
+        <td>{{ row.var99|pct:3 }}%</td>
+        <td>{% if row.es95 %}{{ row.es95|pct:3 }}%{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- VaR backtest table (or young-history note)                   -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>VaR backtest — Kupiec / Christoffersen / joint</h3>
+  {% if risk.backtest.young_history %}
+    <div class="young-history-note">
+      ⚠ Backtests need 250+ scored observations — this portfolio has
+      {{ risk.backtest.n_scored }} so far. The table will appear once enough
+      history is available.
+    </div>
+  {% else %}
+  <div style="margin-bottom:.75rem;font-size:.85rem;color:#57606a">
+    Window: rolling-250 days &middot;
+    Scored days: <strong>{{ risk.backtest.n_scored }}</strong> &middot;
+    Exceptions: <strong>{{ risk.backtest.n_exceptions }}</strong>
+    ({{ risk.backtest.n_exceptions }} / {{ risk.backtest.n_scored }} =
+    {{ risk.backtest.n_exceptions|default:0 }}{% if risk.backtest.n_scored %}/{{ risk.backtest.n_scored }}{% endif %})
+  </div>
+  <table class="risk-table">
+    <thead>
+      <tr><th>Test</th><th>LR statistic</th><th>p-value</th><th>Reject H₀?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Kupiec POF</td>
+        <td>{{ risk.backtest.kupiec_lr|floatformat:4 }}</td>
+        <td>{{ risk.backtest.kupiec_p|floatformat:4 }}</td>
+        <td>{% if risk.backtest.kupiec_reject %}<span class="dn">Yes</span>{% else %}<span class="up">No</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Christoffersen IND</td>
+        <td>{{ risk.backtest.chris_lr|floatformat:4 }}</td>
+        <td>{{ risk.backtest.chris_p|floatformat:4 }}</td>
+        <td>{% if risk.backtest.chris_p < 0.05 %}<span class="dn">Yes</span>{% else %}<span class="up">No</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Joint test (CCC)</td>
+        <td>{{ risk.backtest.joint_lr|floatformat:4 }}</td>
+        <td>{{ risk.backtest.joint_p|floatformat:4 }}</td>
+        <td>{% if risk.backtest.joint_p < 0.05 %}<span class="dn">Yes</span>{% else %}<span class="up">No</span>{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% if risk.backtest.chris_n00 is not None %}
+  <p style="font-size:.8rem;color:#57606a;margin-top:.5rem">
+    Christoffersen transition counts:
+    n₀₀={{ risk.backtest.chris_n00 }}
+    n₀₁={{ risk.backtest.chris_n01 }}
+    n₁₀={{ risk.backtest.chris_n10 }}
+    n₁₁={{ risk.backtest.chris_n11 }}
+  </p>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% load static %}
+<script src="{% static 'echarts.min.js' %}"></script>
+<script>
+const RISK_CHARTS = JSON.parse('{{ charts_json|escapejs }}');
+
+function initChart(id, payload) {
+  if (!payload || !document.getElementById(id)) return;
+  const chart = echarts.init(document.getElementById(id));
+  const opt = {
+    tooltip: payload.tooltip || {trigger:'axis'},
+    legend: payload.legend,
+    xAxis: payload.xAxis,
+    yAxis: payload.yAxis,
+    series: payload.series,
+    visualMap: payload.visualMap,
+    grid: {left:'60px', right:'20px', top:'30px', bottom:'60px'},
+  };
+  Object.keys(opt).forEach(k => opt[k] === undefined && delete opt[k]);
+  chart.setOption(opt);
+  window.addEventListener('resize', () => chart.resize());
+}
+
+initChart('chart-histogram', RISK_CHARTS.histogram);
+initChart('chart-regime',    RISK_CHARTS.regime);
+</script>
+{% endblock %}
