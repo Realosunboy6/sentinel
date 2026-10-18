@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load static sentinel_filters %}
+
+{% block title %}Sentinel — Portfolio intelligence for serious investors{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ---- hero ---- */
+  .hero { background: linear-gradient(135deg, #10233f 0%, #1a3355 100%); color: #fff; padding: 3.5rem 0 3rem; margin: -1.5rem -1.5rem 2rem; }
+  .hero .wrap { max-width: 1120px; margin: 0 auto; padding: 0 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; }
+  .hero h1 { font-size: 2rem; font-weight: 800; line-height: 1.2; margin-bottom: 1rem; }
+  .hero .sub { color: rgba(255,255,255,0.72); font-size: 1rem; line-height: 1.6; margin-bottom: 1.5rem; }
+  .hero-ctas { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .hero-note { font-size: 0.75rem; color: rgba(255,255,255,0.45); margin-top: 0.75rem; }
+  .hero-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 1.25rem; }
+  .hero-card .cap { display: flex; justify-content: space-between; font-size: 0.8rem; color: rgba(255,255,255,0.6); margin-bottom: 0.5rem; }
+  .hero-card .cap strong { color: #fff; }
+  .hero-card .fig { font-size: 1.25rem; font-weight: 700; color: #0e9f6e; margin-bottom: 0.75rem; }
+  .hero-card .fig small { font-size: 0.85rem; font-weight: 400; color: rgba(255,255,255,0.6); margin-left: 0.5rem; }
+  .echarts-hero { width: 100%; height: 200px; }
+  @media (max-width: 760px) { .hero .wrap { grid-template-columns: 1fr; } }
+  /* ---- feature grid ---- */
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+  @media (max-width: 700px) { .grid-3 { grid-template-columns: 1fr; } }
+  .feature-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .feature-card h3 { font-size: 0.9rem; font-weight: 700; margin-bottom: 0.4rem; }
+  .feature-card p { font-size: 0.825rem; color: #57606a; line-height: 1.55; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ======================================================= -->
+<!-- Hero                                                    -->
+<!-- ======================================================= -->
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <h1>Know your portfolio's risk before the market teaches you.</h1>
+      <p class="sub">Type in your tickers and weights — no account, no brokerage login, nothing about your money. Sentinel runs the analysis: value-at-risk, tail diagnostics, regime detection and optimization, on an engine verified trade-by-trade.</p>
+      <div class="hero-ctas">
+        <a href="{% url 'analyze' %}" class="btn btn-primary">Analyze a portfolio</a>
+        <a href="{% url 'analyze' %}?preset=k5-sample" class="btn btn-ghost">See a sample</a>
+      </div>
+      <p class="hero-note">Free &middot; No sign-up &middot; Your inputs are never stored with an identity</p>
+    </div>
+    <div class="hero-card">
+      <div class="cap"><strong>Sample portfolio growth</strong><span>K5 sample, Jan 2021 – present</span></div>
+      {% if k5_metrics %}
+        <div class="fig">
+          $10,000 &rarr; ${{ k5_metrics.portfolio.end|dollar:0 }}
+          <small>CAGR {{ k5_metrics.portfolio.cagr|pct:1 }}%</small>
+        </div>
+        <div class="echarts-hero" id="hero-chart"></div>
+      {% else %}
+        <!-- Cold-start fallback: static SVG from design package -->
+        <div class="fig">$10,000 &rarr; $24,324 <small>CAGR 16.5%</small></div>
+        <svg viewBox="0 0 720 200" style="width:100%;height:160px" role="img" aria-label="Sample growth chart">
+          <polyline points="6,160 60,140 120,120 180,130 240,100 300,110 360,85 420,70 480,55 540,40 600,28 660,18 714,12"
+            fill="none" stroke="#0e9f6e" stroke-width="2.5" stroke-linejoin="round"/>
+          <polyline points="6,160 60,155 120,150 180,155 240,148 300,152 360,145 420,148 480,150 540,148 600,152 660,150 714,155"
+            fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3" stroke-linejoin="round"/>
+        </svg>
+      {% endif %}
+      <div style="display:flex;gap:1rem;font-size:0.72rem;color:rgba(255,255,255,0.55);margin-top:0.5rem">
+        <span>&#9632; Portfolio</span>
+        <span>&#9135;&#9135; Benchmark (SPY)</span>
+        {% if k5_metrics %}<span style="margin-left:auto">Max DD <strong style="color:#dc2626">{{ k5_metrics.portfolio.maxdd|pct:1 }}%</strong></span>{% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= -->
+<!-- Feature grid                                            -->
+<!-- ======================================================= -->
+<section style="margin-bottom:2.5rem">
+  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.5rem">Everything a serious portfolio needs.</h2>
+  <p style="color:#57606a;margin-bottom:1.5rem;font-size:0.9rem">Four modules, one engine. Enter weights, get numbers — each one computed, not estimated.</p>
+  <div class="grid-3">
+    <div class="feature-card">
+      <h3>📊 Analyzer</h3>
+      <p>CAGR, volatility, Sharpe, Sortino, max drawdown, growth chart, monthly heatmap, frontier — all in one view.</p>
+      <a href="{% url 'analyze' %}" style="font-size:0.8rem;color:#3b82d4">Analyze &rarr;</a>
+    </div>
+    <div class="feature-card">
+      <h3>🎯 RiskLens</h3>
+      <p>VaR / ES (95 &amp; 99), Basel traffic light, Kupiec &amp; Christoffersen backtests, tail diagnostics, regime badge.</p>
+      <span style="font-size:0.8rem;color:#94a3b8">Coming in M2</span>
+    </div>
+    <div class="feature-card">
+      <h3>⚙️ Optimizer</h3>
+      <p>Max-Sharpe, GMV, risk parity, min-CVaR, Black-Litterman — efficient frontier with your portfolio dot.</p>
+      <span style="font-size:0.8rem;color:#94a3b8">Coming in M3</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= -->
+<!-- Preset examples                                         -->
+<!-- ======================================================= -->
+<section>
+  <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:0.75rem">Try a preset</h2>
+  <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+    <a href="{% url 'analyze' %}?preset=60-40" class="btn btn-outline">60/40 (SPY/BND)</a>
+    <a href="{% url 'analyze' %}?preset=k5-sample" class="btn btn-outline">K5 Sample</a>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% if k5_charts_json %}
+{% load static %}
+<script src="{% static 'echarts.min.js' %}"></script>
+<script>
+const heroCharts = JSON.parse('{{ k5_charts_json|escapejs }}');
+if (heroCharts.growth && document.getElementById('hero-chart')) {
+  const c = echarts.init(document.getElementById('hero-chart'));
+  const g = heroCharts.growth;
+  c.setOption({
+    xAxis: {data: g.xAxis.data, type:'category', show:false},
+    yAxis: {type:'value', show:false},
+    series: g.series,
+    grid: {left:0, right:0, top:0, bottom:0},
+    tooltip: g.tooltip,
+  });
+  window.addEventListener('resize', () => c.resize());
+}
+</script>
+{% endif %}
+{% endblock %}

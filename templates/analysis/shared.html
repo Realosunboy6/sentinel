@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% load static sentinel_filters %}
+
+{% block title %}Analysis {{ analysis.slug }} — Sentinel{% endblock %}
+
+{% block extra_head %}
+<style>
+  .kpi-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem; min-width: 150px; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .kpi .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #57606a; margin-bottom: 0.25rem; }
+  .kpi .value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #1f2328; }
+  .kpi .value.down { color: #dc2626; }
+  .kpi .sub { font-size: 0.75rem; color: #57606a; margin-top: 0.2rem; }
+  .chart-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .chart-panel h3 { font-size: 0.875rem; font-weight: 600; color: #1f2328; margin: 0 0 0.75rem; }
+  .chart-panel .vintage { font-size: 0.72rem; color: #57606a; margin-top: 0.5rem; }
+  .echarts-div { width: 100%; height: 320px; }
+  .echarts-div.tall { height: 400px; }
+  .echarts-div.sm { height: 260px; }
+  .perf-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .perf-table th, .perf-table td { padding: 0.45rem 0.75rem; text-align: right; border-bottom: 1px solid #f1f5f9; font-variant-numeric: tabular-nums; }
+  .perf-table th { font-weight: 600; font-size: 0.75rem; color: #57606a; text-transform: uppercase; background: #f7f8fa; }
+  .perf-table td:first-child, .perf-table th:first-child { text-align: left; }
+  .up { color: #0e9f6e; } .dn { color: #dc2626; }
+  .regime-badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+  .regime-bull    { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+  .regime-bear    { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+  .regime-neutral { background: #f7f8fa; color: #57606a; border: 1px solid #e2e8f0; }
+  .share-bar { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.825rem; color: #1e40af; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .share-bar code { background: rgba(0,0,0,0.06); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; word-break: break-all; }
+  .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 720px) { .cols-2 { grid-template-columns: 1fr; } }
+  .read-only-banner { background: #f7f8fa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #57606a; display: flex; align-items: center; gap: 0.5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Page header -->
+<div class="page-head" style="margin-bottom:1rem">
+  <h1 style="font-size:1.4rem">Portfolio analysis</h1>
+  <span class="meta">
+    {% if data_vintage.start and data_vintage.end %}
+      {{ data_vintage.start }} – {{ data_vintage.end }} &middot; monthly rebalanced &middot; dividends reinvested
+    {% endif %}
+  </span>
+</div>
+
+<!-- Share bar (spec §10) -->
+<div class="share-bar">
+  <span>&#128279; Share this analysis:</span>
+  <code>{{ share_url }}</code>
+  <button onclick="navigator.clipboard.writeText('{{ share_url }}')" class="btn btn-outline" style="font-size:0.75rem;padding:0.25rem 0.6rem">Copy</button>
+  <span style="color:#6b7280;font-size:0.75rem">Anyone with this link can view these tickers and weights.</span>
+</div>
+
+<!-- Re-analyse button -->
+<p style="margin-bottom:1.25rem">
+  <a href="{% url 'analyze' %}" class="btn btn-outline" style="font-size:0.8rem">&larr; New analysis</a>
+</p>
+
+<!-- ============================================================ -->
+<!-- KPI cards                                                    -->
+<!-- ============================================================ -->
+{% with p=metrics.portfolio b=metrics.benchmark %}
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="label">CAGR</div>
+    <div class="value {% if p.cagr < 0 %}down{% endif %}">{{ p.cagr|pct:1 }}%</div>
+    <div class="sub">benchmark {{ b.cagr|pct:1 }}%</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Volatility</div>
+    <div class="value">{{ p.vol|pct:1 }}%</div>
+    <div class="sub">annualized std dev</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Sharpe ratio</div>
+    <div class="value {% if p.sharpe < 0 %}down{% endif %}">{{ p.sharpe|floatformat:2 }}</div>
+    <div class="sub">Sortino {{ p.sortino|floatformat:2 }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Max drawdown</div>
+    <div class="value down">{{ p.maxdd|pct:1 }}%</div>
+    <div class="sub">benchmark {{ b.maxdd|pct:1 }}%</div>
+  </div>
+  <div class="kpi">
+    <div class="label">End value</div>
+    <div class="value">${{ p.end|dollar:0 }}</div>
+    <div class="sub">from $10,000</div>
+  </div>
+</div>
+{% endwith %}
+
+<!-- ============================================================ -->
+<!-- Growth line chart                                            -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>Portfolio growth vs benchmark</h3>
+  <div class="echarts-div tall" id="chart-growth"></div>
+  <div class="vintage">{{ asof }}</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Drawdown area chart                                          -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>Drawdown</h3>
+  <div class="echarts-div" id="chart-drawdown"></div>
+  <div class="vintage">{{ asof }}</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Performance summary table (PV layout)                       -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>Performance summary</h3>
+  {% with p=metrics.portfolio b=metrics.benchmark %}
+  <table class="perf-table">
+    <thead><tr><th>Metric</th><th>Portfolio</th><th>Benchmark</th></tr></thead>
+    <tbody>
+      <tr><td>CAGR</td><td class="{% if p.cagr >= 0 %}up{% else %}dn{% endif %}">{{ p.cagr|pct:2 }}%</td><td>{{ b.cagr|pct:2 }}%</td></tr>
+      <tr><td>Ann. volatility</td><td>{{ p.vol|pct:2 }}%</td><td>{{ b.vol|pct:2 }}%</td></tr>
+      <tr><td>Sharpe ratio</td><td>{{ p.sharpe|floatformat:3 }}</td><td>{{ b.sharpe|floatformat:3 }}</td></tr>
+      <tr><td>Sortino ratio</td><td>{{ p.sortino|floatformat:3 }}</td><td>{{ b.sortino|floatformat:3 }}</td></tr>
+      <tr><td>Max drawdown</td><td class="dn">{{ p.maxdd|pct:2 }}%</td><td class="dn">{{ b.maxdd|pct:2 }}%</td></tr>
+      <tr><td>Best day</td><td class="up">{{ metrics.best_day|pct:2 }}%</td><td>—</td></tr>
+      <tr><td>Worst day</td><td class="dn">{{ metrics.worst_day|pct:2 }}%</td><td>—</td></tr>
+      <tr><td>% positive months</td><td>{{ metrics.pos_months|pct:1 }}%</td><td>—</td></tr>
+    </tbody>
+  </table>
+  {% endwith %}
+</div>
+
+<!-- ============================================================ -->
+<!-- Annual bars + monthly heatmap                               -->
+<!-- ============================================================ -->
+<div class="cols-2">
+  <div class="chart-panel">
+    <h3>Annual returns</h3>
+    <div class="echarts-div sm" id="chart-annual"></div>
+    <div class="vintage">{{ asof }}</div>
+  </div>
+  <div class="chart-panel">
+    <h3>Monthly returns heatmap</h3>
+    <div class="echarts-div sm" id="chart-monthly"></div>
+    <div class="vintage">{{ asof }}</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Allocation donut + correlation heatmap                      -->
+<!-- ============================================================ -->
+<div class="cols-2">
+  <div class="chart-panel">
+    <h3>Allocation</h3>
+    <div class="echarts-div" id="chart-allocation"></div>
+  </div>
+  <div class="chart-panel">
+    <h3>Correlation matrix</h3>
+    <div class="echarts-div" id="chart-correlation"></div>
+    <div class="vintage">{{ asof }}</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Efficient frontier + portfolio dot                          -->
+<!-- ============================================================ -->
+<div class="chart-panel">
+  <h3>Efficient frontier</h3>
+  <div class="echarts-div" id="chart-frontier"></div>
+  <div class="vintage">{{ asof }}</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Regime badge                                                 -->
+<!-- ============================================================ -->
+{% if metrics.regime %}
+<div class="chart-panel" style="display:flex;align-items:center;gap:1rem">
+  <h3 style="margin:0">Market regime</h3>
+  <span class="regime-badge {% if 'bull' in metrics.regime|lower %}regime-bull{% elif 'bear' in metrics.regime|lower %}regime-bear{% else %}regime-neutral{% endif %}">
+    {{ metrics.regime }}
+  </span>
+</div>
+{% endif %}
+
+<!-- ============================================================ -->
+<!-- Per-asset table                                             -->
+<!-- ============================================================ -->
+{% if metrics.per_asset %}
+<div class="chart-panel">
+  <h3>Per-asset breakdown</h3>
+  <table class="perf-table">
+    <thead>
+      <tr><th>Symbol</th><th>CAGR</th><th>Vol</th><th>Sharpe</th><th>Sortino</th><th>Max DD</th><th>End value</th></tr>
+    </thead>
+    <tbody>
+      {% for sym, a in metrics.per_asset.items %}
+      <tr>
+        <td style="font-weight:600">{{ sym }}</td>
+        <td class="{% if a.cagr >= 0 %}up{% else %}dn{% endif %}">{{ a.cagr|pct:2 }}%</td>
+          <td>{{ a.vol|pct:2 }}%</td>
+          <td>{{ a.sharpe|floatformat:3 }}</td>
+          <td>{{ a.sortino|floatformat:3 }}</td>
+          <td class="dn">{{ a.maxdd|pct:2 }}%</td>
+          <td>${{ a.end|dollar:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% load static %}
+<script src="{% static 'echarts.min.js' %}"></script>
+<script>
+const CHARTS = JSON.parse('{{ charts_json|escapejs }}');
+
+function initChart(id, payload) {
+  if (!payload || !document.getElementById(id)) return;
+  const chart = echarts.init(document.getElementById(id));
+  const opt = {
+    tooltip: payload.tooltip || {trigger:'axis'},
+    legend: payload.legend,
+    xAxis: payload.xAxis,
+    yAxis: payload.yAxis,
+    series: payload.series,
+    visualMap: payload.visualMap,
+    grid: {left:'60px', right:'20px', top:'30px', bottom:'40px'},
+  };
+  // Remove undefined keys
+  Object.keys(opt).forEach(k => opt[k] === undefined && delete opt[k]);
+  chart.setOption(opt);
+  window.addEventListener('resize', () => chart.resize());
+}
+
+initChart('chart-growth',      CHARTS.growth);
+initChart('chart-drawdown',    CHARTS.drawdown);
+initChart('chart-annual',      CHARTS.annual);
+initChart('chart-monthly',     CHARTS.monthly);
+initChart('chart-allocation',  CHARTS.allocation);
+initChart('chart-correlation', CHARTS.correlation);
+initChart('chart-frontier',    CHARTS.frontier);
+</script>
+{% endblock %}

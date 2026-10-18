@@ -7,45 +7,105 @@
   {% load static %}
   <link rel="stylesheet" href="{% static 'styles.css' %}">
   <style>
-    /* Minimal chrome overrides for the nav bar */
+    /* ---- nav chrome matching dashboard.html mockup ---- */
     .sentinel-nav {
       background: #10233f;
       color: #fff;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sentinel-nav .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
       padding: 0 1.5rem;
       display: flex;
       align-items: center;
       height: 52px;
-      gap: 2rem;
+      gap: 0;
     }
-    .sentinel-nav a {
-      color: rgba(255,255,255,0.85);
-      text-decoration: none;
-      font-size: 0.875rem;
-      font-weight: 500;
-    }
-    .sentinel-nav a:hover { color: #fff; }
     .sentinel-nav .brand {
       font-size: 1rem;
       font-weight: 700;
       color: #fff;
-      letter-spacing: 0.02em;
+      text-decoration: none;
+      letter-spacing: 0.03em;
+      margin-right: 2rem;
     }
-    .page-container {
-      max-width: 960px;
-      margin: 2rem auto;
-      padding: 0 1.5rem;
+    .sentinel-nav .brand .mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      background: #0e9f6e;
+      color: #fff;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      margin-right: 6px;
     }
+    .sentinel-nav .nav-links {
+      display: flex;
+      gap: 0.25rem;
+      flex: 1;
+    }
+    .sentinel-nav .nav-links a {
+      color: rgba(255,255,255,0.72);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .sentinel-nav .nav-links a:hover,
+    .sentinel-nav .nav-links a.active {
+      color: #fff;
+      background: rgba(255,255,255,0.1);
+    }
+    .sentinel-nav .nav-note {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.45);
+    }
+    /* ---- page container ---- */
+    .page-wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 3rem;
+    }
+    /* ---- flash messages ---- */
+    .flash {
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+    }
+    .flash-info  { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .flash-warn  { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .flash-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .flash-ok    { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
   </style>
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <nav class="sentinel-nav">
-    <a href="/" class="brand">Sentinel</a>
-    <a href="/securities/">Securities</a>
-    <a href="/admin/">Admin</a>
+    <div class="wrap">
+      <a class="brand" href="{% url 'landing' %}">
+        <span class="mark">S</span> Sentinel
+      </a>
+      <div class="nav-links">
+        <a href="{% url 'analyze' %}" {% if request.resolver_match.url_name == 'analyze' or request.resolver_match.url_name == 'shared_analysis' %}class="active"{% endif %}>Analyze</a>
+        <a href="#">Risk</a>
+        <a href="#">Optimize</a>
+        <a href="#">All tools</a>
+      </div>
+      <div class="nav-note">No account needed</div>
+    </div>
   </nav>
 
-  <div class="page-container">
+  <div class="page-wrap">
     {% block content %}{% endblock %}
   </div>
+
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>

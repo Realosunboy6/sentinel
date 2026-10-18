@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Engine unavailable — Sentinel{% endblock %}
+
+{% block content %}
+<div style="max-width:520px;margin:4rem auto;text-align:center">
+  <div style="font-size:2.5rem;margin-bottom:1rem">⚠️</div>
+  <h1 style="font-size:1.5rem;margin-bottom:0.5rem">Analysis engine unavailable</h1>
+  <p style="color:#57606a;margin-bottom:1.5rem">
+    The analysis engine (portlab) could not be reached. This is a
+    configuration issue — no data has been lost.
+  </p>
+  <p style="color:#57606a;font-size:0.875rem">
+    If you are the site operator, ensure <code>portlab[opt]==0.2.2</code>
+    is installed in the active Python environment.
+  </p>
+  {% if error_detail %}
+  <pre style="text-align:left;background:#f7f8fa;border:1px solid #e2e8f0;border-radius:8px;padding:1rem;font-size:0.75rem;overflow-x:auto;margin-top:1.5rem">{{ error_detail }}</pre>
+  {% endif %}
+  <p style="margin-top:1.5rem">
+    <a href="/" class="btn btn-outline">&larr; Back to home</a>
+  </p>
+</div>
+{% endblock %}
