@@ -1,7 +1,7 @@
 """
 portlab engine adapter — the ONLY module in this repo that imports portlab.
 
-All analysis calls go through run_analysis().  The rest of the app never
+All analysis calls go through run_analysis() or run_risklens(). The rest of the app never
 touches portlab directly.
 
 Alpha convention (spec §5.1)
@@ -402,8 +402,8 @@ def _worst_year(annual: dict) -> list:
 # RiskLens entry point
 # ---------------------------------------------------------------------------
 
-# Minimum scored days needed for a meaningful backtest (one full rolling window
-# plus enough scored days for the LR tests to be asymptotically valid).
+# Product threshold for displaying backtests, after the rolling warmup.
+# This is a UI policy, not a guarantee of asymptotic test accuracy.
 _MIN_BACKTEST_SCORED = 250
 
 
@@ -460,36 +460,42 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
         returns.index = pd.to_datetime(returns.index)
 
     n = len(returns)
+    if n < 2 or not np.isfinite(returns.to_numpy(dtype=float)).all():
+        raise ValueError("RiskLens needs at least two finite daily returns.")
     alpha99 = 0.01  # tail probability for 99% VaR
+    # A single final expanding forecast: same observations and alignment as
+    # window=None, without fitting Student-t MLE on every intermediate day.
+    point_window = n - 1 if n > 2 else None
 
     # ------------------------------------------------------------------
     # Full-sample point-in-time VaR / ES (last value of rolling series)
     # ------------------------------------------------------------------
-    hist_var95  = float(pl_var.historical_var(returns, alpha=tail_alpha).iloc[-1])
-    hist_var99  = float(pl_var.historical_var(returns, alpha=alpha99).iloc[-1])
-    hist_es95   = float(pl_var.expected_shortfall(returns, alpha=tail_alpha).iloc[-1])
+    hist_var95  = float(pl_var.historical_var(returns, alpha=tail_alpha, window=point_window).iloc[-1])
+    hist_var99  = float(pl_var.historical_var(returns, alpha=alpha99, window=point_window).iloc[-1])
+    hist_es95   = float(pl_var.expected_shortfall(returns, alpha=tail_alpha, window=point_window).iloc[-1])
 
     # Parametric (mean="constant" per spec §5.4)
-    param_var95 = float(pl_var.parametric_var(returns, alpha=tail_alpha, mean="constant").iloc[-1])
-    param_var99 = float(pl_var.parametric_var(returns, alpha=alpha99,   mean="constant").iloc[-1])
-    param_es95  = float(pl_var.expected_shortfall(returns, alpha=tail_alpha).iloc[-1])  # reuse hist ES
+    param_var95 = _finite_or_none(pl_var.parametric_var(returns, alpha=tail_alpha, mean="constant", window=point_window).iloc[-1])
+    param_var99 = _finite_or_none(pl_var.parametric_var(returns, alpha=alpha99, mean="constant", window=point_window).iloc[-1])
 
     # Student-t parametric
-    parm_t_var95 = float(pl_var.parametric_var_t(returns, alpha=tail_alpha).iloc[-1])
-    parm_t_var99 = float(pl_var.parametric_var_t(returns, alpha=alpha99).iloc[-1])
+    parm_t_var95 = _finite_or_none(pl_var.parametric_var_t(returns, alpha=tail_alpha, window=point_window).iloc[-1])
+    parm_t_var99 = _finite_or_none(pl_var.parametric_var_t(returns, alpha=alpha99, window=point_window).iloc[-1])
 
     # Cornish-Fisher
-    cf_var95 = float(pl_var.cornish_fisher_var(returns, alpha=tail_alpha).iloc[-1])
-    cf_var99 = float(pl_var.cornish_fisher_var(returns, alpha=alpha99).iloc[-1])
+    cf_var95 = _finite_or_none(pl_var.cornish_fisher_var(returns, alpha=tail_alpha, window=point_window).iloc[-1])
+    cf_var99 = _finite_or_none(pl_var.cornish_fisher_var(returns, alpha=alpha99, window=point_window).iloc[-1])
 
     # GARCH (mean="zero" per spec §5.4)
     try:
-        garch_var95 = float(pl_var.garch_var(returns, alpha=tail_alpha, window=backtest_window, mean="zero").iloc[-1])
-        garch_var99 = float(pl_var.garch_var(returns, alpha=alpha99,    window=backtest_window, mean="zero").iloc[-1])
+        # Only the latest forecast is displayed. Its trailing window is identical
+        # to the last forecast of a full rolling run, avoiding thousands of fits.
+        recent = returns.iloc[-(backtest_window + 1):]
+        garch_var95 = _finite_or_none(pl_var.garch_var(recent, alpha=tail_alpha, window=backtest_window, mean="zero").iloc[-1])
+        garch_var99 = _finite_or_none(pl_var.garch_var(recent, alpha=alpha99, window=backtest_window, mean="zero").iloc[-1])
     except Exception as exc:
-        logger.warning("garch_var failed (%s); falling back to historical", exc)
-        garch_var95 = hist_var95
-        garch_var99 = hist_var99
+        logger.warning("garch_var unavailable: %s", exc)
+        garch_var95 = garch_var99 = None
 
     var_table = [
         {"method": "Historical",       "var95": hist_var95,   "var99": hist_var99,   "es95": hist_es95},
@@ -525,9 +531,11 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
         kup   = pl_bt.kupiec_pof(exc, alpha=tail_alpha)
         chris = pl_bt.christoffersen_ind(exc)
         joint = pl_bt.joint_test(exc, alpha=tail_alpha)
-        # Basel traffic light uses alpha=0.01 (99% VaR convention per Basel II/III)
-        # and n_obs = n_scored (the scored window)
-        bt_result = pl_bt.basel_traffic_light(n_exceptions, n_obs=n_scored, alpha=0.01)
+        # Basel uses 99% forecasts over the latest 250 scored observations,
+        # separately from the 95% full-history likelihood-ratio tests.
+        var99_series = pl_var.historical_var(returns, alpha=0.01, window=backtest_window)
+        basel_scored = pl_bt.exceptions(returns, var99_series).dropna().iloc[-250:]
+        bt_result = pl_bt.basel_traffic_light(int(basel_scored.sum()), n_obs=len(basel_scored), alpha=0.01)
         backtest = {
             "n_scored":       n_scored,
             "n_exceptions":   n_exceptions,
@@ -544,6 +552,8 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
             "joint_lr":       float(joint["lr_stat"]),
             "joint_p":        float(joint["p_value"]),
             "basel_zone":     str(bt_result.get("zone", "UNKNOWN")),
+            "basel_n_scored": len(basel_scored),
+            "basel_n_exceptions": int(basel_scored.sum()),
         }
 
     # ------------------------------------------------------------------
@@ -552,13 +562,14 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
     try:
         regime_series = pl_regime.detect_regime(returns)
         rv = pl_regime.regime_var(returns, alpha=tail_alpha, regime=regime_series)
-        calm_var95     = float(rv.get("calm",   rv.get("low",  hist_var95)))
-        stressed_var95 = float(rv.get("stress", rv.get("high", hist_var95)))
-        full_var95     = hist_var95
-        current_regime = str(regime_series.iloc[-1]) if hasattr(regime_series, "iloc") else "unknown"
+        calm_var95 = _finite_or_none(rv["calm_var"])
+        stressed_var95 = _finite_or_none(rv["stressed_var"])
+        full_var95 = _finite_or_none(rv["full_var"])
+        current_regime = {0: "Calm", 1: "Stressed"}.get(rv["current_regime"], "Unknown")
     except Exception as exc:
-        logger.warning("regime_var failed (%s); using full-sample VaR", exc)
-        calm_var95 = stressed_var95 = full_var95 = hist_var95
+        logger.warning("regime_var unavailable: %s", exc)
+        calm_var95 = stressed_var95 = None
+        full_var95 = hist_var95
         current_regime = "unknown"
 
     regime = {
@@ -571,16 +582,16 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
     # ------------------------------------------------------------------
     # Tail diagnostics
     # ------------------------------------------------------------------
-    jb_result = pl_tail.jarque_bera(returns)
-    jb_p = float(jb_result.get("p_value", jb_result.get("pvalue", 0.0)))
-    k_hill = max(10, int(n ** 0.5))
-    hill_result = pl_tail.hill_estimator(returns.abs(), k=k_hill)
-    hill = float(hill_result.get("xi", hill_result.get("hill", 0.0)))
+    jb_result = pl_tail.jarque_bera(returns) if n >= 8 else {}
+    jb_p = jb_result.get("p_value", jb_result.get("pvalue"))
+    losses = -returns
+    k_hill = min(max(2, int(n ** 0.5)), int((losses > 0).sum()))
+    hill = float(pl_tail.hill_estimator(losses, k=k_hill)["xi"]) if k_hill >= 2 else None
 
     tail = {
-        "skew":     float(returns.skew()),
-        "exkurt":   float(returns.kurtosis()),
-        "jb_p":     jb_p,
+        "skew":     _finite_or_none(returns.skew()),
+        "exkurt":   _finite_or_none(returns.kurtosis()),
+        "jb_p":     _finite_or_none(jb_p),
         "hill":     hill,
         "worst_day": float(returns.min()),
         "best_day":  float(returns.max()),
@@ -590,6 +601,7 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
     # Histogram data (pre-binned for ECharts)
     # ------------------------------------------------------------------
     histogram = _build_histogram(returns, hist_var95, hist_var99)
+    stress_scenarios = _historical_stress(returns)
 
     # ------------------------------------------------------------------
     # Data vintage
@@ -605,13 +617,37 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
         "regime":       regime,
         "tail":         tail,
         "histogram":    histogram,
+        "stress_scenarios": stress_scenarios,
         "data_vintage": data_vintage,
         # Convenience copies for the KPI bar
         "var95":  hist_var95,
         "var99":  hist_var99,
         "es95":   hist_es95,
         "basel_zone": backtest["basel_zone"],
+        "drawdown": {"dates": [str(d.date()) for d in returns.index],
+                     "values": _drawdown_series(returns, None).tolist()},
     }
+
+
+def _finite_or_none(value):
+    return float(value) if value is not None and np.isfinite(value) else None
+
+
+def _historical_stress(returns):
+    """Replay observed constant-mix portfolio paths, never invented shocks."""
+    from portlab.stress import scenario_shocks
+
+    wealth = (1 + returns).cumprod().to_frame("portfolio")
+    rows = []
+    for label, start, end in (
+        ("COVID crash", "2020-02-19", "2020-03-23"),
+        ("2022 bear market", "2022-01-03", "2022-10-12"),
+    ):
+        available = returns.index.min() <= pd.Timestamp(start) and returns.index.max() >= pd.Timestamp(end)
+        value = float(scenario_shocks(wealth, start, end)["portfolio"]) if available else None
+        rows.append({"name": label, "start": start, "end": end, "return": value,
+                     "note": "Observed daily constant-mix replay" if available else "Cached analysis history does not cover this episode"})
+    return rows
 
 
 def _build_histogram(returns: pd.Series, var95: float, var99: float, n_bins: int = 40) -> dict:

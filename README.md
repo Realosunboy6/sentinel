@@ -84,6 +84,7 @@ python manage.py runserver
 Visit:
 - **http://localhost:8000/securities/** — M0 gate page (price counts + latest dates)
 - **http://localhost:8000/admin/** — Django admin (securities, presets, analyses)
+- **http://localhost:8000/analyze** — portfolio analyzer; open Risk from a completed analysis
 
 ---
 
@@ -97,7 +98,15 @@ export SECRET_KEY=dev-only-secret
 pytest
 ```
 
-Expected: **23 tests, all green**.
+Expected: **102 tests, all green** (M0, M1, and M2).
+
+PowerShell equivalent:
+
+```powershell
+$env:DATABASE_URL = 'sqlite:///:memory:'
+$env:SECRET_KEY = 'dev-only-secret'
+python -m pytest
+```
 
 ---
 
@@ -144,10 +153,12 @@ sentinel/
 |---|---|
 | **M0** ✅ | `pytest` green; securities list page works |
 | **M1** ✅ | Analyzer + golden tests + SPY anchors; 87 tests pass |
-| M2 | RiskLens + VaR backtests |
+| **M2** ✅ | RiskLens + VaR backtests; SPY anchors through database and web stack |
 | M3 | Optimizer |
 | M4 | All 19 tool pages |
 | M5 | Hardening + deploy |
+
+M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
 
 ---
 

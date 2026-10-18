@@ -76,7 +76,7 @@
       {% else %}<span class="tl-na">{{ zone }}</span>{% endif %}
       {% endwith %}
     </div>
-    <div class="sub">VaR backtest exceptions</div>
+    <div class="sub">99% VaR, latest 250 scored days{% if not risk.backtest.young_history %}: {{ risk.backtest.basel_n_exceptions }} exceptions{% endif %}</div>
   </div>
 </div>
 
@@ -99,10 +99,15 @@
 <!-- ============================================================ -->
 <div class="cols-2">
   <div class="chart-panel">
+    <h3>Portfolio drawdown</h3>
+    <div class="echarts-div" id="chart-drawdown"></div>
+    <div class="vintage">{{ asof }}</div>
+  </div>
+  <div class="chart-panel">
     <h3>Regime</h3>
     <p style="margin-bottom:.75rem;font-size:.875rem">
       Current regime:
-      <span class="regime-badge {% if 'bull' in risk.regime.current|lower %}regime-bull{% elif 'bear' in risk.regime.current|lower or 'stress' in risk.regime.current|lower %}regime-bear{% else %}regime-neutral{% endif %}">
+      <span class="regime-badge {% if risk.regime.current == 'Calm' %}regime-bull{% elif risk.regime.current == 'Stressed' %}regime-bear{% else %}regime-neutral{% endif %}">
         {{ risk.regime.current }}
       </span>
     </p>
@@ -117,6 +122,8 @@
     </table>
   </div>
 
+</div>
+<div class="cols-2">
   <!-- ============================================================ -->
   <!-- Tail diagnostics                                             -->
   <!-- ============================================================ -->
@@ -128,17 +135,31 @@
         <tr><td>Skewness</td><td>{{ risk.tail.skew|floatformat:3 }}</td></tr>
         <tr><td>Excess kurtosis</td><td>{{ risk.tail.exkurt|floatformat:3 }}</td></tr>
         <tr><td>Jarque–Bera p-value</td><td>{{ risk.tail.jb_p|floatformat:3 }}</td></tr>
-        <tr><td>Hill tail index</td><td>{{ risk.tail.hill|floatformat:3 }}</td></tr>
+        <tr><td>Hill loss-tail index</td><td>{{ risk.tail.hill|floatformat:3|default:'Unavailable' }}</td></tr>
       </tbody>
     </table>
     <p style="color:#57606a;font-size:.8rem;margin-top:.75rem">
-      {% if risk.tail.jb_p > 0.05 %}
+      {% if risk.tail.jb_p is None %}
+        Too few observations for the normality test.
+      {% elif risk.tail.jb_p > 0.05 %}
         Jarque–Bera p &gt; 0.05: daily returns are not rejected as normal on this sample.
       {% else %}
         Jarque–Bera p ≤ 0.05: daily returns show significant non-normality.
       {% endif %}
-      Hill index &gt; 0 confirms fat-tailed behaviour; ES is reported alongside VaR.
+      Hill estimates the upper loss-tail index; larger estimates indicate heavier tails.
     </p>
+  </div>
+  <div class="chart-panel">
+    <h3>Historical stress scenarios</h3>
+    <table class="risk-table">
+      <thead><tr><th>Episode</th><th>Portfolio return</th></tr></thead>
+      <tbody>{% for scenario in risk.stress_scenarios %}
+        <tr><td>{{ scenario.name }}<br><small>{{ scenario.start }} to {{ scenario.end }}</small></td>
+        <td>{% if scenario.return is None %}Unavailable{% else %}{{ scenario.return|pct:2 }}%{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    <p style="color:#57606a;font-size:.8rem">Replays compound observed daily returns at the entered constant weights. Episodes outside this analysis's cached history are unavailable.</p>
+    <div class="vintage">{{ asof }}</div>
   </div>
 </div>
 
@@ -155,13 +176,14 @@
       {% for row in risk.var_table %}
       <tr>
         <td>{{ row.method }}</td>
-        <td>{{ row.var95|pct:3 }}%</td>
-        <td>{{ row.var99|pct:3 }}%</td>
+        <td>{% if row.var95 is None %}Unavailable{% else %}{{ row.var95|pct:3 }}%{% endif %}</td>
+        <td>{% if row.var99 is None %}Unavailable{% else %}{{ row.var99|pct:3 }}%{% endif %}</td>
         <td>{% if row.es95 %}{{ row.es95|pct:3 }}%{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  <p style="color:#57606a;font-size:.8rem">GARCH needs 250 prior observations and a successful fit. Regime estimates need at least 20 observations in each regime; unavailable estimates are shown as a dash.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -177,7 +199,7 @@
     </div>
   {% else %}
   <div style="margin-bottom:.75rem;font-size:.85rem;color:#57606a">
-    Window: rolling-250 days &middot;
+    95% historical VaR, rolling-250 days &middot;
     Scored days: <strong>{{ risk.backtest.n_scored }}</strong> &middot;
     Exceptions: <strong>{{ risk.backtest.n_exceptions }}</strong>
     ({{ risk.backtest.n_exceptions }} / {{ risk.backtest.n_scored }} =
@@ -247,5 +269,6 @@ function initChart(id, payload) {
 
 initChart('chart-histogram', RISK_CHARTS.histogram);
 initChart('chart-regime',    RISK_CHARTS.regime);
+initChart('chart-drawdown',  RISK_CHARTS.drawdown);
 </script>
 {% endblock %}

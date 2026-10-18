@@ -59,7 +59,7 @@ traffic light, regime-conditional VaR, tail diagnostics, and young-history state
 - Spec §5.1–5.4 (alpha duality, VaR sign, exceptions handling, GARCH/parametric defaults).
 - `tests/test_spy_anchors.py` — existing fixture + anchor numbers (window=250, start 2019-01-10).
 
-**Status:** [ ] pending
+**Status:** [x] complete (2026-10-18; see docs/m2-gate.md)
 
 ---
 
@@ -89,7 +89,7 @@ Add two new serializers to `apps/analysis/charts.py`:
 - `docs/design/snippets/histogram.svg` — histogram shape reference.
 - Spec §9 (chart envelope format, tooltip requirement).
 
-**Status:** [ ] pending
+**Status:** [x] complete (2026-10-18; see docs/m2-gate.md)
 
 ---
 
@@ -130,7 +130,7 @@ returns derived from `price_history`, and renders all sections.
 - `docs/design/shots/risk.png` — rendered screenshot.
 - Spec §7 (Risk page sections, young-history states).
 
-**Status:** [ ] pending
+**Status:** [x] complete (2026-10-18; see docs/m2-gate.md)
 
 ---
 
@@ -159,7 +159,7 @@ validates the young-history logic and the backtest table rendering.
 - `tests/test_spy_anchors.py` — existing anchor fixture and start-date logic.
 - `tests/test_pages.py` — existing page-smoke patterns.
 
-**Status:** [ ] pending
+**Status:** [x] complete (2026-10-18; see docs/m2-gate.md)
 
 ---
 
@@ -170,7 +170,7 @@ validates the young-history logic and the backtest table rendering.
 - README M2 row marked ✅.
 - Commit `M2: RiskLens + VaR backtests`.
 
-**Status:** [ ] pending
+**Status:** [x] complete (2026-10-18; see docs/m2-gate.md)
 
 ---
 

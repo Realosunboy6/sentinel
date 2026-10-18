@@ -10,14 +10,15 @@ Analysis row, calls engine.run_risklens(), and builds chart payloads.
 from __future__ import annotations
 
 import logging
+from calendar import monthrange
 from datetime import date
 
 import pandas as pd
 
 from apps.analysis.analyzer import load_prices, make_returns
-from apps.analysis.charts import histogram_chart, regime_panel_chart
+from apps.analysis.charts import histogram_chart, regime_panel_chart, drawdown_chart
 from apps.analysis.engine import EngineUnavailableError, run_risklens
-from apps.analysis.models import Analysis, AnalysisResult
+from apps.analysis.models import Analysis
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,8 @@ def get_risklens(slug: str) -> tuple[Analysis, dict, dict]:
     """
     analysis = Analysis.objects.get(slug=slug)
     stored_holdings = analysis.inputs.get("holdings", [])
-    benchmark_symbol = analysis.inputs.get("settings", {}).get("benchmark", "SPY")
 
     symbols = [h["symbol"] for h in stored_holdings]
-    all_symbols = symbols + ([benchmark_symbol] if benchmark_symbol not in symbols else [])
 
     # Date window: use stored start date or default 10y
     stored_start = analysis.inputs.get("start")
@@ -45,15 +44,21 @@ def get_risklens(slug: str) -> tuple[Analysis, dict, dict]:
         start_date = date.fromisoformat(stored_start)
     else:
         today = date.today()
-        start_date = date(today.year - DEFAULT_YEARS, today.month, today.day)
+        year = today.year - DEFAULT_YEARS
+        start_date = today.replace(year=year, day=min(today.day, monthrange(year, today.month)[1]))
 
-    prices_df = load_prices(all_symbols, start_date, date.today())
-    if prices_df.empty:
+    end_date = date.fromisoformat(analysis.inputs["end"]) if analysis.inputs.get("end") else date.today()
+    prices_df = load_prices(symbols, start_date, end_date)
+    if prices_df.empty or not set(symbols).issubset(prices_df.columns):
         raise EngineUnavailableError("No price data available for this analysis.")
 
     returns_df = make_returns(prices_df)
+    if returns_df.empty:
+        raise EngineUnavailableError("At least two cached prices per holding are needed.")
     weights = [h["weight"] for h in stored_holdings]
     weight_sum = sum(weights)
+    if weight_sum <= 0:
+        raise EngineUnavailableError("Portfolio weights must have a positive sum.")
     norm_weights = [w / weight_sum for w in weights]
 
     port_returns = (returns_df[symbols] * norm_weights).sum(axis=1)
@@ -72,6 +77,7 @@ def _build_risk_charts(risk_metrics: dict, asof: str) -> dict:
     h = risk_metrics["histogram"]
     r = risk_metrics["regime"]
     return {
+        "drawdown": drawdown_chart(risk_metrics["drawdown"]["dates"], risk_metrics["drawdown"]["values"], asof),
         "histogram": histogram_chart(
             bins=h["bins"],
             counts=h["counts"],

@@ -126,6 +126,7 @@ def analyze_view(request):
 @require_GET
 def shared_analysis_view(request, slug):
     analysis = get_object_or_404(Analysis, slug=slug)
+    request.session["analysis_slug"] = analysis.slug
 
     result = (
         AnalysisResult.objects
@@ -165,7 +166,7 @@ def risk_view(request):
     """
     GET /risk?slug=<slug>  — full RiskLens report for the given analysis.
     """
-    slug = request.GET.get("slug", "").strip()
+    slug = request.GET.get("slug", request.session.get("analysis_slug", "")).strip()
     if not slug:
         # No slug: prompt the user to run an analysis first.
         return render(request, "analysis/risk_no_analysis.html")
@@ -179,11 +180,10 @@ def risk_view(request):
         return render(request, "analysis/engine_unavailable.html", status=503)
     except Exception as exc:
         logger.exception("risk_view: unexpected error for slug=%s", slug)
-        return render(request, "analysis/engine_unavailable.html", {
-            "error_detail": str(exc)
-        }, status=500)
+        return render(request, "analysis/engine_unavailable.html", status=500)
 
     asof = risk_metrics["data_vintage"]["end"]
+    request.session["analysis_slug"] = analysis.slug
     return render(request, "analysis/risk.html", {
         "analysis": analysis,
         "risk": risk_metrics,

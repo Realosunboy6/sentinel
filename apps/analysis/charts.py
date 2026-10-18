@@ -392,7 +392,7 @@ def histogram_chart(
     """
     bar_data = [
         {
-            "value": c,
+            "value": [float(b * 100), c],
             "itemStyle": {"color": "#dc2626" if b <= var95_line else "#10233f"},
         }
         for b, c in zip(bins, counts)
@@ -401,9 +401,8 @@ def histogram_chart(
         "chart": "bar",
         "title": "Daily Return Distribution",
         "xAxis": {
-            "data": [f"{b*100:.2f}%" for b in bins],
-            "type": "category",
-            "axisLabel": {"rotate": 45, "fontSize": 10},
+            "type": "value",
+            "axisLabel": {"formatter": "{value}%", "fontSize": 10},
             "name": "Daily Return",
             "nameLocation": "middle",
             "nameGap": 50,
@@ -411,7 +410,6 @@ def histogram_chart(
         "yAxis": {"type": "value", "name": "Frequency"},
         "tooltip": {
             "trigger": "axis",
-            "formatter": "Return {b}<br/>Count: {c}",
         },
         "series": [
             {
@@ -424,12 +422,12 @@ def histogram_chart(
                     "symbol": "none",
                     "data": [
                         {
-                            "xAxis": f"{var95_line*100:.2f}%",
+                            "xAxis": var95_line * 100,
                             "lineStyle": {"color": "#dc2626", "type": "dashed", "width": 2},
                             "label": {"formatter": "VaR 95%", "position": "insideEndTop"},
                         },
                         {
-                            "xAxis": f"{var99_line*100:.2f}%",
+                            "xAxis": var99_line * 100,
                             "lineStyle": {"color": "#7f1d1d", "type": "dashed", "width": 2},
                             "label": {"formatter": "VaR 99%", "position": "insideEndTop"},
                         },
@@ -471,8 +469,8 @@ def regime_panel_chart(
                 "name": "VaR 95%",
                 "type": "bar",
                 "data": [
-                    {"value": round(calm_var95 * 100, 3),     "itemStyle": {"color": "#0e9f6e"}},
-                    {"value": round(stressed_var95 * 100, 3), "itemStyle": {"color": "#dc2626"}},
+                    {"value": round(calm_var95 * 100, 3) if calm_var95 is not None else None, "itemStyle": {"color": "#0e9f6e"}},
+                    {"value": round(stressed_var95 * 100, 3) if stressed_var95 is not None else None, "itemStyle": {"color": "#dc2626"}},
                     {"value": round(full_var95 * 100, 3),     "itemStyle": {"color": "#10233f"}},
                 ],
             }
