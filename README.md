@@ -143,7 +143,7 @@ sentinel/
 | # | Gate |
 |---|---|
 | **M0** ✅ | `pytest` green; securities list page works |
-| M1 | Analyzer core + golden-number tests |
+| **M1** ✅ | Analyzer + golden tests + SPY anchors; 87 tests pass |
 | M2 | RiskLens + VaR backtests |
 | M3 | Optimizer |
 | M4 | All 19 tool pages |

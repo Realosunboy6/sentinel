@@ -68,7 +68,7 @@ Single module that calls portlab. Owns the alpha-duality boundary (spec §5.1). 
 1. Write `apps/analysis/engine.py`.
 2. Add `EngineUnavailableError` to `apps/analysis/__init__.py`.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
@@ -96,7 +96,7 @@ engine on miss, store result, return metrics.
 1. Write `apps/analysis/analyzer.py`.
 2. Add `InvalidTickerError` to `apps/analysis/__init__.py`.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
@@ -122,7 +122,7 @@ Matches the `dashboard.html` mockup layout.
 2. Write `apps/analysis/views.py` stub with `tickers_autocomplete` view.
 3. Write `templates/analysis/partials/portfolio_form.html`.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
@@ -148,7 +148,7 @@ Convert engine output to §9-envelope JSON payloads. Vendor `echarts.min.js`.
 1. Write `apps/analysis/charts.py`.
 2. Download `echarts.min.js` from the Apache ECharts CDN and save to `static/echarts.min.js`.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
@@ -181,7 +181,7 @@ Wire everything end-to-end. PRG pattern on form submit. Share links. Landing pag
 7. Update `sentinel/urls.py` with all M1 routes.
 8. Update `templates/base.html` nav.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
@@ -217,7 +217,7 @@ report — never edit the expected value.
 4. Write `tests/test_spy_anchors.py`.
 5. Run both; investigate any mismatch in the adapter before touching expected values.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
@@ -230,7 +230,7 @@ report — never edit the expected value.
 - `pytest` exits 0 across all M0 + M1 tests.
 - `README.md` updated: M1 ✅.
 
-**Status:** [ ] pending
+**Status:** [x] done
 
 ---
 
