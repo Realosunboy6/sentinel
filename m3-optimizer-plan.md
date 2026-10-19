@@ -46,7 +46,15 @@ M2 commit 7b560aa was pushed and verified on GitHub before starting.
 - [x] Optimizer page
 - [x] Risk-parity and rolling tools
 - [x] Full tests and browser checks
-- [x] Gate report and local commit
+- [x] Initial gate report and local commit
+- [ ] Reuse the shared editable portfolio input required by spec sections 7-8
+- [ ] Include a reference code on every engine-error panel
+- [ ] Complete a requirement-by-requirement visual review against reference designs
+- [ ] Close acceptance gaps before declaring M3 complete or advancing to M4
+
+The earlier checklist did not cover every cross-cutting requirement. The
+numerical gate passed; overall specification acceptance remains open. See
+`docs/build-contract-audit.md` for the evidence and inherited schema issues.
 
 Never push M3 without a new explicit instruction. No golden expectations or
 fixture histories may be edited to silence failures.

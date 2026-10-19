@@ -156,13 +156,14 @@ sentinel/
 |---|---|
 | **M0** ✅ | `pytest` green; securities list page works |
 | **M1** ✅ | Analyzer + golden tests + SPY anchors; 87 tests pass |
-| **M2** ✅ | RiskLens + VaR backtests; SPY anchors through database and web stack |
-| **M3** ✅ | Optimizer, risk parity, rolling allocations; direct portlab weight gate |
+| **M2** Gate passed | RiskLens + web SPY anchors; drawdown annotation follow-up open |
+| **M3** Review open | Optimizer numerical gate passed; shared-input and acceptance gaps remain |
 | M4 | All 19 tool pages |
 | M5 | Hardening + deploy |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
 M3 validation and calculation conventions: [gate report](docs/m3-gate.md).
+Acceptance corrections and remaining contract gaps: [build-contract review](docs/build-contract-audit.md).
 
 ---
 

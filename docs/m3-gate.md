@@ -1,5 +1,11 @@
 # M3 gate: optimizer
 
+**Acceptance correction (2026-10-18):** the numerical gate below passed,
+but M3 is not fully accepted against the build contract. The tool pages lack
+the required shared editable portfolio form; engine-error references and
+reference-design verification are incomplete. See
+[build-contract review](build-contract-audit.md). The test evidence remains valid.
+
 Verified locally on 2026-10-18 with Python 3.14, Django 5.2.18,
 portlab 0.2.2 and isolated SQLite databases. M2 commit 7b560aa was pushed
 and verified on GitHub before M3 began.
@@ -82,4 +88,5 @@ Browser checks cover the local fixture app, not a production deployment or
 exhaustive device matrix. No new schema migrations or external market requests
 were needed. M4 remaining tools/gallery and M5 hardening/deployment remain.
 
-M3 is ready for owner review. It is committed locally and has not been pushed.
+M3 is committed locally and has not been pushed. Specification acceptance is
+open until the tracked contract gaps are resolved.
