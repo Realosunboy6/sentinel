@@ -74,6 +74,11 @@ def drawdown_chart(
     drawdown_pct: list[float],
     asof: str,
 ) -> dict[str, Any]:
+    finite = [i for i, value in enumerate(drawdown_pct) if math.isfinite(value)]
+    deepest = min(finite, key=lambda i: drawdown_pct[i]) if finite else None
+    markers = [] if deepest is None else [{"name": f"Deepest drawdown ({dates[deepest]})",
+        "coord": [dates[deepest], round(drawdown_pct[deepest] * 100, 4)],
+        "value": round(drawdown_pct[deepest] * 100, 4)}]
     return {
         "chart": "line",
         "title": "Drawdown",
@@ -97,6 +102,9 @@ def drawdown_chart(
                 "areaStyle": {"color": "rgba(220,38,38,0.15)"},
                 "lineStyle": {"color": "#dc2626", "width": 1.5},
                 "showSymbol": False,
+                "markPoint": {"symbol": "circle", "symbolSize": 8, "data": markers,
+                    "itemStyle": {"color": "#dc2626"},
+                    "label": {"show": True, "formatter": "Deepest: {c}%", "position": "top"}},
             }
         ],
         "meta": {"asof": asof, "label": _asof_label(asof)},
@@ -491,8 +499,8 @@ def optimization_charts(report):
     frontier["legend"] = {"data": ["Frontier", "Your portfolio", "Optimized portfolio"]}
     risk = {
         "chart": "bar", "title": "Share of portfolio variance",
-        "xAxis": {"type": "category", "data": [row["symbol"] for row in report["weights"]]},
-        "yAxis": {"type": "value", "name": "Risk contribution (%)"},
+        "yAxis": {"type": "category", "data": [row["symbol"] for row in report["weights"]], "inverse": True},
+        "xAxis": {"type": "value", "name": "Risk contribution (%)", "nameLocation": "middle", "nameGap": 35},
         "tooltip": {"trigger": "axis"}, "legend": {"data": ["Current", "Optimized"]},
         "series": [{"name": label, "type": "bar", "data": [row[key] * 100 for row in report["weights"]],
                     "itemStyle": {"color": color}} for label, key, color in

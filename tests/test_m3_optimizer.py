@@ -234,3 +234,111 @@ def test_forms_reject_nonfinite_and_duplicate_views():
         form = OptimizationForm({**base, "views": views}, symbols=SYMBOLS)
         assert not form.is_valid()
         assert "views" in form.errors
+
+
+def portfolio_post(slug=""):
+    return {"slug": slug, "holdings_json": json.dumps([
+        {"symbol": "MCK", "weight": 60}, {"symbol": "LLY", "weight": 40}]),
+        "benchmark": "MCK", "start_date": "2022-01-03", "end_date": "2024-12-31",
+        "method": "gmv", "cap_percent": 70, "rf_percent": 0, "tc_bps": 10}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path", ["/optimize", "/tools/risk-parity", "/tools/rolling-optimization"])
+def test_shared_editor_applies_edits_without_mutating_saved_analysis(client, stored_portfolio, path):
+    from apps.analysis.models import Analysis, AnalysisResult
+    from apps.marketdata.models import Security
+    original = json.loads(json.dumps(stored_portfolio.inputs))
+    counts = (Analysis.objects.count(), AnalysisResult.objects.count(), Security.objects.count())
+    with patch("apps.marketdata.sources.YahooPriceSource.fetch", side_effect=AssertionError("No market requests")):
+        response = client.post(path, portfolio_post(stored_portfolio.slug))
+    assert response.status_code == 200
+    assert response.context["portfolio_form"].is_valid()
+    report = response.context["report"]
+    assert report["data_vintage"]["start"] >= "2022-01-03"
+    assert report["data_vintage"]["end"] <= "2024-12-31"
+    if path.endswith("rolling-optimization"):
+        assert report["symbols"] == ["MCK", "LLY"]
+    else:
+        assert {row["symbol"]: row["current"] for row in report["weights"]} == pytest.approx({"MCK": .6, "LLY": .4})
+    stored_portfolio.refresh_from_db()
+    assert stored_portfolio.inputs == original
+    assert (Analysis.objects.count(), AnalysisResult.objects.count(), Security.objects.count()) == counts
+    assert 'data-portfolio-form' in response.content.decode()
+    assert '/static/portfolio-input.js' in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_tool_can_start_without_saved_analysis(client, stored_portfolio):
+    response = client.post("/optimize", portfolio_post())
+    assert response.status_code == 200
+    assert response.context["analysis"] is None
+    assert response.context["report"]["weights"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("holdings, error", [
+    ([{"symbol": "MCK", "weight": 20}], "Weights sum to"),
+    ([{"symbol": "MCK", "weight": float("nan")}], "finite"),
+    ([{"symbol": "MCK", "weight": -10}, {"symbol": "MCK", "weight": 110}], "nonnegative"),
+    ([{"symbol": "UNKNOWN", "weight": 100}], "UNKNOWN"),
+    ([1], "Each holding"),
+])
+def test_shared_editor_rejects_bad_inputs_inline(client, stored_portfolio, holdings, error):
+    from apps.analysis.models import Analysis
+    before = Analysis.objects.count()
+    payload = portfolio_post(stored_portfolio.slug)
+    payload["holdings_json"] = json.dumps(holdings)
+    response = client.post("/optimize", payload)
+    assert response.status_code == 200
+    assert error in response.content.decode()
+    assert not response.context.get("report")
+    assert Analysis.objects.count() == before
+
+
+@pytest.mark.django_db
+def test_duplicate_holdings_merge_with_notice(client, stored_portfolio):
+    payload = portfolio_post(stored_portfolio.slug)
+    payload["holdings_json"] = json.dumps([{"symbol":"MCK","weight":30}, {"symbol":"MCK","weight":30}, {"symbol":"LLY","weight":40}])
+    response = client.post("/optimize", payload)
+    assert response.status_code == 200
+    assert "Duplicate tickers merged: MCK" in response.content.decode()
+    assert len(response.context["report"]["weights"]) == 2
+
+
+@pytest.mark.django_db
+def test_shared_editor_date_errors(client, stored_portfolio):
+    payload = portfolio_post(stored_portfolio.slug)
+    payload["end_date"] = "2020-01-01"
+    response = client.post("/optimize", payload)
+    assert response.status_code == 200
+    assert "End date must be after start date" in response.content.decode()
+    assert not response.context.get("report")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path, target, post", [
+    ("/optimize?slug=optimizer-test", "apps.analysis.optimization_views.optimize_portfolio", False),
+    ("/risk?slug=optimizer-test", "apps.analysis.risklens.get_risklens", False),
+    ("/analyze", "apps.analysis.views.analyze", True),
+])
+def test_engine_errors_have_log_correlated_reference(client, stored_portfolio, caplog, path, target, post):
+    secret = "private internal engine detail"
+    with patch(target, side_effect=EngineUnavailableError(secret)):
+        response = client.post(path, portfolio_post()) if post else client.get(path)
+    assert response.status_code == 503
+    reference = response.context["error_reference"]
+    assert len(reference) == 12
+    assert reference in response.content.decode()
+    assert reference in caplog.text
+    assert secret not in response.content.decode()
+
+
+def test_drawdown_annotation_identifies_minimum():
+    from apps.analysis.charts import drawdown_chart
+    # Hand-constructed chart-only values; not a market-data fixture or engine path.
+    chart = drawdown_chart(["a", "b", "c"], [0, -.2, -.1], "c")
+    marker = chart["series"][0]["markPoint"]["data"][0]
+    assert marker["coord"] == ["b", -20]
+    assert marker["value"] == -20
+    assert drawdown_chart([], [], "c")["series"][0]["markPoint"]["data"] == []

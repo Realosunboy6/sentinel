@@ -101,7 +101,7 @@ export SECRET_KEY=dev-only-secret
 pytest
 ```
 
-Expected: **129 tests, all green** (M0 through M3).
+Expected: **144 tests, all green** (M0 through M3, including acceptance follow-ups).
 
 PowerShell equivalent:
 
@@ -156,8 +156,8 @@ sentinel/
 |---|---|
 | **M0** ✅ | `pytest` green; securities list page works |
 | **M1** ✅ | Analyzer + golden tests + SPY anchors; 87 tests pass |
-| **M2** Gate passed | RiskLens + web SPY anchors; drawdown annotation follow-up open |
-| **M3** Review open | Optimizer numerical gate passed; shared-input and acceptance gaps remain |
+| **M2** Gate passed | RiskLens + web SPY anchors; deepest-drawdown annotation verified |
+| **M3** Ready for review | Optimizer + shared portfolio editor + tool pages; 144 tests pass |
 | M4 | All 19 tool pages |
 | M5 | Hardening + deploy |
 

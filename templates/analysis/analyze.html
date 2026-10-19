@@ -1,192 +1,21 @@
 {% extends "base.html" %}
-{% load static %}
-
-{% block title %}Analyze — Sentinel{% endblock %}
-
-{% block extra_head %}
-<style>
-  /* ---- input form ---- */
-  .holdings-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-bottom: 0.75rem; }
-  .holdings-table th { text-align: left; padding: 0.4rem 0.5rem; color: #57606a; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #e2e8f0; }
-  .holdings-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9; }
-  .sym-input { width: 100px; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.875rem; text-transform: uppercase; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .wt-input  { width: 80px; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.875rem; text-align: right; font-variant-numeric: tabular-nums; }
-  .sym-input:focus, .wt-input:focus { outline: none; border-color: #3b82d4; box-shadow: 0 0 0 2px rgba(59,130,212,0.15); }
-  .total-row td { font-weight: 700; border-top: 2px solid #e2e8f0; padding-top: 0.5rem; }
-  /* ---- KPI cards ---- */
-  .kpi-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-  .kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem; min-width: 150px; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-  .kpi .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #57606a; margin-bottom: 0.25rem; }
-  .kpi .value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #1f2328; }
-  .kpi .value.down { color: #dc2626; }
-  .kpi .sub { font-size: 0.75rem; color: #57606a; margin-top: 0.2rem; }
-  /* ---- chart panels ---- */
-  .chart-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-  .chart-panel h3 { font-size: 0.875rem; font-weight: 600; color: #1f2328; margin: 0 0 0.75rem; }
-  .chart-panel .vintage { font-size: 0.72rem; color: #57606a; margin-top: 0.5rem; }
-  .echarts-div { width: 100%; height: 300px; }
-  .echarts-div.tall { height: 380px; }
-  /* ---- perf table ---- */
-  .perf-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 0.5rem; }
-  .perf-table th, .perf-table td { padding: 0.45rem 0.75rem; text-align: right; border-bottom: 1px solid #f1f5f9; font-variant-numeric: tabular-nums; }
-  .perf-table th { font-weight: 600; font-size: 0.75rem; color: #57606a; text-transform: uppercase; background: #f7f8fa; }
-  .perf-table td:first-child, .perf-table th:first-child { text-align: left; }
-  .up { color: #0e9f6e; } .dn { color: #dc2626; }
-  /* ---- regime badge ---- */
-  .regime-badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
-  .regime-bull { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
-  .regime-bear { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-  .regime-neutral { background: #f7f8fa; color: #57606a; border: 1px solid #e2e8f0; }
-  /* ---- share bar ---- */
-  .share-bar { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.825rem; color: #1e40af; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-  .share-bar code { background: rgba(0,0,0,0.06); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
-  /* ---- two-col layout ---- */
-  .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
-  @media (max-width: 700px) { .cols-2 { grid-template-columns: 1fr; } }
-</style>
-{% endblock %}
-
+{% block title %}Analyze | Sentinel{% endblock %}
 {% block content %}
-<!-- ======================================================= -->
-<!-- Input form                                              -->
-<!-- ======================================================= -->
 <div class="page-head" style="margin-bottom:1rem">
-  <h1>Portfolio analyzer</h1>
-  <span class="meta">Enter tickers + weights &middot; nothing is linked to your money</span>
+  <h1>Portfolio analyzer</h1><span class="meta">Enter tickers + weights</span>
 </div>
-
-{% if preset_notice %}
-  <div class="flash flash-info">{{ preset_notice }}</div>
-{% endif %}
-{% if normalize_notice %}
-  <div class="flash flash-ok">{{ normalize_notice }}</div>
-{% endif %}
-
-<div class="panel" style="margin-bottom:1.5rem">
-  <h2>1 &middot; Your portfolio</h2>
-
-  {% if presets %}
-  <p style="margin-bottom:0.75rem;font-size:0.8rem;color:#57606a;">
-    Presets:
-    {% for p in presets %}
-      <a href="{% url 'analyze' %}?preset={{ p.slug }}" style="color:#3b82d4;margin-right:0.5rem">{{ p.name }}</a>
-    {% endfor %}
-  </p>
-  {% endif %}
-
-  <form method="post" action="{% url 'analyze' %}" id="analyze-form">
+{% if preset_notice %}<div class="flash flash-info">{{ preset_notice }}</div>{% endif %}
+{% if normalize_notice %}<div class="flash flash-ok">{{ normalize_notice }}</div>{% endif %}
+<div class="panel">
+  <h2>Your portfolio</h2>
+  {% if presets %}<p class="portfolio-actions">Presets:
+    {% for p in presets %}<a href="{% url 'analyze' %}?preset={{ p.slug|urlencode }}">{{ p.name }}</a>{% endfor %}
+  </p>{% endif %}
+  <form method="post" action="{% url 'analyze' %}" id="analyze-form" data-portfolio-form>
     {% csrf_token %}
-    <input type="hidden" name="holdings_json" id="holdings-json-input" value="">
-    <input type="hidden" name="action" id="form-action" value="analyze">
-
-    <!-- Dynamic holdings table -->
-    <table class="holdings-table" id="holdings-table">
-      <thead>
-        <tr><th>Symbol</th><th style="text-align:right">Weight %</th><th></th></tr>
-      </thead>
-      <tbody id="holdings-tbody">
-        <!-- rows injected by JS -->
-      </tbody>
-      <tfoot>
-        <tr class="total-row">
-          <td>Total</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums" id="total-display">0.00</td>
-          <td></td>
-        </tr>
-      </tfoot>
-    </table>
-
-    {% if form.holdings_json.errors %}
-      <p class="flash flash-error">{{ form.holdings_json.errors|join:", " }}</p>
-    {% endif %}
-
-    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
-      <button type="button" onclick="addRow()" class="btn btn-outline" style="font-size:0.8rem">+ Add asset</button>
-      <button type="submit" class="btn btn-primary" style="font-size:0.875rem">Analyze &rarr;</button>
-      <button type="button" onclick="normalizeWeights()" class="btn btn-outline" style="font-size:0.8rem">Normalize</button>
-    </div>
-
-    <!-- Benchmark + dates -->
-    <div style="margin-top:1rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center;font-size:0.875rem">
-      <label>
-        Benchmark:
-        <input class="sym-input" name="benchmark" value="{{ form.benchmark.value|default:'SPY' }}" style="width:80px">
-      </label>
-      <label>
-        Start date:
-        <input type="date" name="start_date" value="{{ form.start_date.value|default:'' }}" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.875rem">
-      </label>
-    </div>
+    {% include "analysis/_portfolio_fields.html" with portfolio_form=form %}
+    <button type="submit" class="btn btn-primary">Analyze portfolio</button>
   </form>
 </div>
-
 {% endblock %}
-
-{% block extra_scripts %}
-{% load static %}
-<script src="{% static 'echarts.min.js' %}"></script>
-<script>
-// ---- Holdings table management ----
-let holdings = [];
-
-// Seed from server (preset fill or form re-render after error)
-const seedJson = {{ form.holdings_json.value|default:"'[]'" }};
-try {
-  holdings = JSON.parse(typeof seedJson === 'string' ? seedJson : JSON.stringify(seedJson));
-} catch(e) { holdings = []; }
-if (!Array.isArray(holdings) || holdings.length === 0) {
-  holdings = [{symbol:'', weight:''}];
-}
-
-function renderTable() {
-  const tbody = document.getElementById('holdings-tbody');
-  tbody.innerHTML = '';
-  holdings.forEach((h, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input class="sym-input" value="${h.symbol||''}" onchange="holdings[${i}].symbol=this.value.toUpperCase();this.value=this.value.toUpperCase();syncHidden()"></td>
-      <td><input class="wt-input" type="number" step="0.01" min="0" value="${h.weight||''}" onchange="holdings[${i}].weight=parseFloat(this.value)||0;updateTotal();syncHidden()"></td>
-      <td><button type="button" onclick="removeRow(${i})" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:1rem">&times;</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-  updateTotal();
-}
-
-function addRow() {
-  holdings.push({symbol:'', weight:''});
-  renderTable();
-}
-
-function removeRow(i) {
-  if (holdings.length > 1) {
-    holdings.splice(i, 1);
-    renderTable();
-  }
-}
-
-function updateTotal() {
-  const total = holdings.reduce((s, h) => s + (parseFloat(h.weight)||0), 0);
-  document.getElementById('total-display').textContent = total.toFixed(2);
-  syncHidden();
-}
-
-function syncHidden() {
-  document.getElementById('holdings-json-input').value = JSON.stringify(
-    holdings.filter(h => h.symbol).map(h => ({symbol: h.symbol, weight: parseFloat(h.weight)||0}))
-  );
-}
-
-function normalizeWeights() {
-  const total = holdings.reduce((s, h) => s + (parseFloat(h.weight)||0), 0);
-  if (total === 0) return;
-  holdings = holdings.map(h => ({...h, weight: Math.round(parseFloat(h.weight)/total*10000)/100}));
-  renderTable();
-  document.getElementById('form-action').value = 'normalize';
-  document.getElementById('analyze-form').submit();
-}
-
-renderTable();
-syncHidden();
-</script>
-{% endblock %}
+{% block extra_scripts %}{% include "analysis/_portfolio_scripts.html" with portfolio_form=form %}{% endblock %}

@@ -20,6 +20,22 @@
   --radius: 10px;
 }
 
+/* Shared editable portfolio form: Analyzer and tools. */
+.holdings-table {width:100%;border-collapse:collapse;font-size:.875rem;margin:.75rem 0}
+.holdings-table th,.holdings-table td {text-align:left;padding:.4rem;border-bottom:1px solid var(--line)}
+.holdings-table .weight-column {text-align:right;font-variant-numeric:tabular-nums}
+.portfolio-editor input {max-width:100%;padding:.5rem;border:1px solid var(--line);border-radius:6px;font:inherit;background:white}
+.portfolio-editor .sym-input {width:120px;text-transform:uppercase;font-weight:600}
+.portfolio-editor .wt-input {width:110px;text-align:right;font-variant-numeric:tabular-nums}
+.portfolio-editor .remove-asset {border:0;background:none;color:var(--red);font-size:1.3rem;cursor:pointer}
+.portfolio-editor .remove-asset:disabled {opacity:.35;cursor:default}
+.portfolio-actions {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin:.75rem 0}
+.portfolio-dates {display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0}
+.portfolio-dates label {display:block;font-size:.85rem;margin-bottom:.25rem}
+.portfolio-editor .errorlist {color:var(--red);list-style:none;font-size:.875rem;margin:.5rem 0}
+.portfolio-editor input:focus {outline:2px solid var(--accent);outline-offset:1px}
+@media(max-width:600px) {.portfolio-editor .sym-input {width:100%}.portfolio-editor .wt-input {width:100%}.portfolio-dates>div {width:100%}.portfolio-dates input {width:100%}}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

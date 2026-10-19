@@ -1,10 +1,11 @@
 # M3 gate: optimizer
 
-**Acceptance correction (2026-10-18):** the numerical gate below passed,
-but M3 is not fully accepted against the build contract. The tool pages lack
-the required shared editable portfolio form; engine-error references and
-reference-design verification are incomplete. See
-[build-contract review](build-contract-audit.md). The test evidence remains valid.
+**Acceptance follow-up (2026-10-19):** the missing shared editable portfolio
+form, engine-error references, and visual-review follow-ups are now implemented
+and checked. M3 is ready for owner review. PostgreSQL/Python 3.12 coverage and
+inherited schema differences remain open. See
+[build-contract review](build-contract-audit.md) and
+[visual comparison](visual-review-m2-m3.md).
 
 Verified locally on 2026-10-18 with Python 3.14, Django 5.2.18,
 portlab 0.2.2 and isolated SQLite databases. M2 commit 7b560aa was pushed
@@ -18,13 +19,14 @@ and verified on GitHub before M3 began.
   allocation changes, comparative statistics and the frontier.
 - `/tools/rolling-optimization`: historical rolling targets as a stacked
   interactive area chart and dated allocations with turnover/cost estimates.
-- Shared options form and current-analysis selection, with links back to the
-  Analyzer to change tickers or starting weights. All M3 calculations use
-  cached adjusted prices and preserve the selected analysis's date range.
+- The same editable portfolio form is now used by Analyzer and all M3 pages,
+  prefilled from the selected analysis. Tool edits recalculate temporarily
+  without overwriting the saved report. M3 calculations use cached adjusted
+  prices and the entered date range; initial values preserve the saved range.
 
 ## Evidence
 
-- Full suite: **129 passed in 69.70 seconds**, including **27 new M3 tests**.
+- Latest full suite: **144 passed in 120.06 seconds**, including **42 M3 tests**.
 - Django system check: no issues. `git diff --check`: no whitespace errors.
 - Adapter max-Sharpe weights match a direct public portlab call within the
   required absolute **1e-4** tolerance. The database/web route meets the same
@@ -47,6 +49,10 @@ and verified on GitHub before M3 began.
   charts stack; wide tables scroll within their containers. The initial chart
   grid overflow was fixed. The viewport override was reset afterward.
 - Existing M1 golden values and M2 SPY anchors passed without modification.
+- New checks verify edited holdings/dates on each M3 page, no saved-analysis
+  mutation or source fetch, calculations without an existing analysis,
+  duplicate notices, invalid weights/dates/tickers, safe log-correlated
+  engine references and the deepest-drawdown marker.
 
 ## Numerical conventions
 
@@ -88,5 +94,7 @@ Browser checks cover the local fixture app, not a production deployment or
 exhaustive device matrix. No new schema migrations or external market requests
 were needed. M4 remaining tools/gallery and M5 hardening/deployment remain.
 
-M3 is committed locally and has not been pushed. Specification acceptance is
-open until the tracked contract gaps are resolved.
+M3 and its acceptance follow-ups are local changes awaiting owner review;
+they have not been pushed. The tracked implementation gaps are closed, while
+environment verification and inherited schema reconciliation remain explicit
+limitations rather than passed checks.

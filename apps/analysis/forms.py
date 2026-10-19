@@ -14,7 +14,9 @@ Validation rules (spec §7):
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+import math
+from calendar import monthrange
+from datetime import date
 
 from django import forms
 from django.core.exceptions import ValidationError
@@ -50,13 +52,15 @@ class PortfolioInputForm(forms.Form):
         required=False,
         widget=forms.DateInput(attrs={"type": "date"}),
     )
+    end_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
 
     def __init__(self, *args, **kwargs):
+        self.cached_only = kwargs.pop("cached_only", False)
         super().__init__(*args, **kwargs)
         today = date.today()
-        self.fields["start_date"].initial = date(
-            today.year - DEFAULT_YEARS, today.month, today.day
-        )
+        year = today.year - DEFAULT_YEARS
+        self.fields["start_date"].initial = today.replace(year=year, day=min(today.day, monthrange(year, today.month)[1]))
+        self.fields["end_date"].initial = today
         self.fields["benchmark"].initial = DEFAULT_BENCHMARK
 
     # ------------------------------------------------------------------
@@ -76,11 +80,15 @@ class PortfolioInputForm(forms.Form):
         # Parse and normalise
         parsed = []
         for item in holdings:
+            if not isinstance(item, dict):
+                raise ValidationError("Each holding must contain a ticker and weight.")
             sym = str(item.get("symbol", "")).strip().upper()
             try:
                 wt = float(item.get("weight", 0))
             except (TypeError, ValueError):
                 raise ValidationError(f"Invalid weight for {sym!r}.")
+            if not math.isfinite(wt) or wt < 0:
+                raise ValidationError(f"Weight for {sym!r} must be finite and nonnegative.")
             if sym:
                 parsed.append({"symbol": sym, "weight": wt})
 
@@ -127,6 +135,24 @@ class PortfolioInputForm(forms.Form):
         # The analyzer will call ingest_security() on-demand if needed.
         return holdings
 
+    def clean(self):
+        data = super().clean()
+        start, end = data.get("start_date"), data.get("end_date")
+        if start and end and start >= end:
+            self.add_error("end_date", "End date must be after start date.")
+        if self.cached_only:
+            holdings = data.get("holdings_json", [])
+            symbols = {h["symbol"] for h in holdings}
+            benchmark = data.get("benchmark")
+            if benchmark:
+                symbols.add(benchmark)
+            known = set(Security.objects.filter(symbol__in=symbols).values_list("symbol", flat=True))
+            missing = symbols - known
+            if missing:
+                field = "holdings_json" if missing & {h["symbol"] for h in holdings} else "benchmark"
+                self.add_error(field, "No cached security for: " + ", ".join(sorted(missing)) + ". Add its price history before running this tool.")
+        return data
+
     def clean_benchmark(self):
         val = self.cleaned_data.get("benchmark", DEFAULT_BENCHMARK).strip().upper()
         return val or DEFAULT_BENCHMARK
@@ -134,10 +160,15 @@ class PortfolioInputForm(forms.Form):
     def clean_start_date(self):
         val = self.cleaned_data.get("start_date")
         if val is None:
-            today = date.today()
-            val = date(today.year - DEFAULT_YEARS, today.month, today.day)
+            val = self.fields["start_date"].initial
         if val >= date.today():
             raise ValidationError("Start date must be before today.")
+        return val
+
+    def clean_end_date(self):
+        val = self.cleaned_data.get("end_date") or date.today()
+        if val > date.today():
+            raise ValidationError("End date cannot be in the future.")
         return val
 
     # ------------------------------------------------------------------

@@ -19,6 +19,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from apps.analysis.analyzer import InvalidTickerError, analyze
 from apps.analysis.charts import build_all_charts, allocation_donut_chart
 from apps.analysis.engine import EngineUnavailableError
+from apps.analysis.errors import engine_error_response
 from apps.analysis.forms import PortfolioInputForm
 from apps.analysis.models import Analysis, AnalysisResult, Preset
 from apps.marketdata.models import Security
@@ -44,7 +45,7 @@ def analyze_view(request):
         try:
             preset = Preset.objects.get(slug=preset_slug)
             preset_holdings = preset.inputs.get("holdings", [])
-            initial_holdings_json = json.dumps(preset_holdings)
+            initial_holdings_json = json.dumps([{**h, "weight": round(float(h["weight"]) * 100, 8)} for h in preset_holdings])
             initial_benchmark = preset.inputs.get("settings", {}).get("benchmark", "SPY")
             preset_notice = f"Loaded preset: {preset.name}"
         except Preset.DoesNotExist:
@@ -54,7 +55,6 @@ def analyze_view(request):
         form = PortfolioInputForm(initial={
             "holdings_json": initial_holdings_json,
             "benchmark": initial_benchmark,
-            "start_date": initial_start_date,
         })
         return render(request, "analysis/analyze.html", {
             "form": form,
@@ -99,6 +99,7 @@ def analyze_view(request):
         analysis, _metrics = analyze(
             holdings=holdings_frac,
             start_date=start_date,
+            end_date=form.cleaned_data["end_date"],
             benchmark_symbol=benchmark,
         )
     except InvalidTickerError as exc:
@@ -108,12 +109,9 @@ def analyze_view(request):
             "presets": Preset.objects.all(),
         })
     except EngineUnavailableError:
-        return render(request, "analysis/engine_unavailable.html", status=503)
+        return engine_error_response(request, "analyze", status=503)
     except Exception as exc:
-        logger.exception("analyze_view: unexpected error")
-        return render(request, "analysis/engine_unavailable.html", {
-            "error_detail": str(exc)
-        }, status=500)
+        return engine_error_response(request, "analyze", status=500)
 
     # PRG: redirect to share URL
     return redirect("shared_analysis", slug=analysis.slug)
@@ -177,10 +175,9 @@ def risk_view(request):
     except Analysis.DoesNotExist:
         raise Http404("Analysis not found.")
     except EngineUnavailableError:
-        return render(request, "analysis/engine_unavailable.html", status=503)
+        return engine_error_response(request, "risk", status=503)
     except Exception as exc:
-        logger.exception("risk_view: unexpected error for slug=%s", slug)
-        return render(request, "analysis/engine_unavailable.html", status=500)
+        return engine_error_response(request, "risk", status=500)
 
     asof = risk_metrics["data_vintage"]["end"]
     request.session["analysis_slug"] = analysis.slug

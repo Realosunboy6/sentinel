@@ -1,4 +1,5 @@
 {% load static %}
+{% include "analysis/_portfolio_scripts.html" %}
 {% if charts %}
 <script src="{% static 'echarts.min.js' %}"></script>
 {{ charts|json_script:"optimization-charts" }}
@@ -12,8 +13,8 @@
     const chart = echarts.init(element);
     const options = {tooltip:payload.tooltip, legend:payload.legend,
       xAxis:payload.xAxis, yAxis:payload.yAxis, series:payload.series,
+      color:['#10233f','#0e9f6e','#d97706','#64748b','#94a3b8'],
       grid:{left:75,right:35,top:65,bottom:65}};
-    // Numeric scatter tooltips need exact coordinate values, not {c[0]} templates.
     if (key === 'frontier') options.tooltip = {trigger:'item', formatter: p =>
       `${p.seriesName}<br>Volatility: ${Number(p.value[0]).toFixed(4)}%<br>Expected return: ${Number(p.value[1]).toFixed(4)}%`};
     chart.setOption(options);

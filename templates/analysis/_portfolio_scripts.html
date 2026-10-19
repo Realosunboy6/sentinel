@@ -1,0 +1,3 @@
+{% load static %}
+{{ portfolio_form.holdings_json.value|json_script:"portfolio-seed" }}
+<script src="{% static 'portfolio-input.js' %}"></script>

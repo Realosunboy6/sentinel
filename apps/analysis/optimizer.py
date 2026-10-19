@@ -19,13 +19,20 @@ def load_optimization_portfolio(slug):
     default_start = today.replace(year=year, day=min(today.day, monthrange(year, today.month)[1]))
     start = date.fromisoformat(analysis.inputs.get("start", str(default_start)))
     end = date.fromisoformat(analysis.inputs.get("end", str(today)))
+    returns, current = load_optimization_inputs(holdings, start, end)
+    return analysis, returns, current
+
+
+def load_optimization_inputs(holdings, start, end):
+    """Load temporary tool inputs without saving or mutating an analysis."""
+    symbols = [h["symbol"] for h in holdings]
     prices = load_prices(symbols, start, end)
     missing = set(symbols) - set(prices.columns)
     if prices.empty or missing:
         raise OptimizationInputError("Cached price history is unavailable for: " + ", ".join(sorted(missing or set(symbols))))
     returns = make_returns(prices[symbols])
     current = {h["symbol"]: h["weight"] for h in holdings}
-    return analysis, returns, current
+    return returns, current
 
 
 def optimize_portfolio(returns, current, **options):

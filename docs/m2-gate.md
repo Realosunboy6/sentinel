@@ -1,8 +1,9 @@
 # M2 gate: RiskLens
 
 **Acceptance note (2026-10-18):** the numerical gate below passed. A later
-contract review found that the drawdown chart still lacks the deepest-point
-annotation required by section 9. See [build-contract review](build-contract-audit.md).
+contract review found a missing deepest-point annotation required by section 9.
+That follow-up was fixed and verified on 2026-10-19. See
+[build-contract review](build-contract-audit.md).
 
 Verified locally on 2026-10-18 with Python 3.14, Django 5.2.18,
 portlab 0.2.2, and an isolated SQLite test database.
