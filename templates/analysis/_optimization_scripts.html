@@ -1,0 +1,25 @@
+{% load static %}
+{% if charts %}
+<script src="{% static 'echarts.min.js' %}"></script>
+{{ charts|json_script:"optimization-charts" }}
+<script>
+(() => {
+  const payloads = JSON.parse(document.getElementById('optimization-charts').textContent);
+  const charts = [];
+  for (const [key, payload] of Object.entries(payloads)) {
+    const element = document.getElementById('chart-' + key);
+    if (!element) continue;
+    const chart = echarts.init(element);
+    const options = {tooltip:payload.tooltip, legend:payload.legend,
+      xAxis:payload.xAxis, yAxis:payload.yAxis, series:payload.series,
+      grid:{left:75,right:35,top:65,bottom:65}};
+    // Numeric scatter tooltips need exact coordinate values, not {c[0]} templates.
+    if (key === 'frontier') options.tooltip = {trigger:'item', formatter: p =>
+      `${p.seriesName}<br>Volatility: ${Number(p.value[0]).toFixed(4)}%<br>Expected return: ${Number(p.value[1]).toFixed(4)}%`};
+    chart.setOption(options);
+    charts.push(chart);
+  }
+  window.addEventListener('resize', () => charts.forEach(chart => chart.resize()));
+})();
+</script>
+{% endif %}

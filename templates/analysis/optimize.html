@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load sentinel_filters %}
+{% block title %}{{ page_title }} | Sentinel{% endblock %}
+{% block extra_head %}{% include "analysis/_optimization_style.html" %}{% endblock %}
+{% block content %}
+<div class="optimization-head"><h1>{{ page_title }}</h1><span class="optimization-meta">Long-only allocations, explicit constraints</span></div>
+{% include "analysis/_optimization_input.html" %}
+{% if report %}
+<div class="optimization-layout">
+  <section class="panel">
+    <h2>Efficient frontier</h2>
+    <div id="chart-frontier" class="optimization-chart"></div>
+    <p class="optimization-note">Mean-variance frontier under the selected asset cap. Both portfolio dots use the same return and covariance estimates. The frontier need not contain portfolios optimized for CVaR or risk parity.</p>
+    <div class="optimization-vintage">History {{ report.data_vintage.start }} to {{ report.data_vintage.end }}</div>
+  </section>
+  <section class="panel">
+    <h2>Who carries the risk?</h2>
+    <div id="chart-risk" class="optimization-chart"></div>
+    <p class="optimization-note">Each asset's share of portfolio variance. A binding weight cap can prevent exactly equal contributions in risk parity.</p>
+    <div class="optimization-vintage">Data as of {{ report.data_vintage.end }}</div>
+  </section>
+</div>
+<section class="panel" style="margin-bottom:1.25rem">
+  <h2>Current vs {{ report.method_label }}</h2>
+  <div class="optimization-table"><table class="summary">
+    <thead><tr><th>Metric</th><th>Current</th><th>Optimized</th></tr></thead>
+    <tbody>
+      <tr><td>Expected annual return</td><td>{{ report.current.return|pct:2 }}%</td><td>{{ report.optimized.return|pct:2 }}%</td></tr>
+      <tr><td>Annual volatility</td><td>{{ report.current.volatility|pct:2 }}%</td><td>{{ report.optimized.volatility|pct:2 }}%</td></tr>
+      <tr><td>Sharpe ratio</td><td>{{ report.current.sharpe|floatformat:3 }}</td><td>{{ report.optimized.sharpe|floatformat:3 }}</td></tr>
+      <tr><td>Historical daily CVaR 95%</td><td>{{ report.current.cvar95|pct:2 }}%</td><td>{{ report.optimized.cvar95|pct:2 }}%</td></tr>
+      <tr><td>One-way turnover</td><td>—</td><td>{{ report.turnover|pct:2 }}%</td></tr>
+      <tr><td>Estimated one-time trading cost</td><td>—</td><td>{{ report.estimated_cost|pct:3 }}%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="optimization-note">{{ report.return_basis }}; Ledoit-Wolf covariance; {{ report.n_observations }} daily observations; annual risk-free rate {{ report.rf|pct:2 }}%. These are in-sample estimates, not realized future performance.</p>
+  <p class="optimization-note">Turnover is half the sum of absolute weight changes. Cost applies {{ report.tc_bps|floatformat:1 }} bps to the full traded notional of {{ report.traded_notional|pct:2 }}%. Only the turnover-aware method includes this penalty in its objective (risk aversion 5); other methods report the cost after optimization. Taxes and market impact are excluded.</p>
+  {% if report.method == 'black_litterman' %}<div class="note">Your entered weights are the reference prior, not market-cap weights. Explicit annual return views are blended with this prior (risk aversion 2.5, tau 0.05), then max-Sharpe is solved on the posterior.</div>{% endif %}
+</section>
+<section class="panel">
+  <h2>Allocation changes</h2>
+  <div class="optimization-table"><table class="data">
+    <thead><tr><th>Symbol</th><th class="num">Current</th><th class="num">Optimized</th><th class="num">Change (pp)</th></tr></thead>
+    <tbody>{% for row in report.weights %}<tr><td><strong>{{ row.symbol }}</strong></td><td class="num">{{ row.current|pct:2 }}%</td><td class="num">{{ row.optimized|pct:2 }}%</td><td class="num">{{ row.change|pct_sign:2 }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="optimization-note">Optimized weights sum to 100%; maximum per asset {{ report.max_weight|pct:1 }}%. No trades are placed.</p>
+</section>
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}{% include "analysis/_optimization_scripts.html" %}{% endblock %}

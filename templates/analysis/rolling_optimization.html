@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load sentinel_filters %}
+{% block title %}Rolling optimization | Sentinel{% endblock %}
+{% block extra_head %}{% include "analysis/_optimization_style.html" %}{% endblock %}
+{% block content %}
+<div class="optimization-head"><h1>{{ page_title }}</h1><span class="optimization-meta">Allocations estimated from prior observations only</span></div>
+{% include "analysis/_optimization_input.html" %}
+{% if report %}
+  {% if report.young_history %}<div class="note">{{ report.message }}</div>
+  {% else %}
+  <section class="panel">
+    <h2>Rolling target weights: {{ report.method_label }}</h2>
+    <div id="chart-rolling" class="optimization-chart"></div>
+    <p class="optimization-note">Each target uses the previous {{ report.lookback }} return observations, excluding the decision date's return. Decisions occur every {{ report.step }} trading observations. Previous allocations drift through realized returns before the next turnover calculation. The first turnover is measured from your entered weights.</p>
+    <div class="optimization-vintage">History {{ report.data_vintage.start }} to {{ report.data_vintage.end }}</div>
+  </section>
+  <section class="panel" style="margin-top:1.25rem">
+    <h2>Dated allocations</h2>
+    <div class="optimization-table"><table class="data">
+      <thead><tr><th>Decision date</th><th>Last training observation</th><th>Target weights</th><th class="num">Turnover</th><th class="num">Estimated cost</th></tr></thead>
+      <tbody>{% for row in report.rows %}<tr><td>{{ row.date }}</td><td>{{ row.training_end }}</td><td>{% for symbol, weight in row.weights.items %}{{ symbol }} {{ weight|pct:2 }}%{% if not forloop.last %}; {% endif %}{% endfor %}</td><td class="num">{{ row.turnover|pct:2 }}%</td><td class="num">{{ row.estimated_cost|pct:3 }}%</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="optimization-note">This is an allocation study, not a strategy performance backtest. Costs use the full traded notional; taxes, slippage and market impact are excluded. Only the turnover-aware method includes trading costs in its objective.</p>
+  </section>
+  {% endif %}
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}{% include "analysis/_optimization_scripts.html" %}{% endblock %}

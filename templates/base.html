@@ -95,7 +95,7 @@
       <div class="nav-links">
         <a href="{% url 'analyze' %}" {% if request.resolver_match.url_name == 'analyze' or request.resolver_match.url_name == 'shared_analysis' %}class="active"{% endif %}>Analyze</a>
         <a href="{% url 'risk' %}{% if analysis.slug %}?slug={{ analysis.slug|urlencode }}{% elif request.session.analysis_slug %}?slug={{ request.session.analysis_slug|urlencode }}{% endif %}" {% if request.resolver_match.url_name == 'risk' %}class="active"{% endif %}>Risk</a>
-        <a href="#">Optimize</a>
+        <a href="{% url 'optimize' %}{% if analysis.slug %}?slug={{ analysis.slug|urlencode }}{% elif request.session.analysis_slug %}?slug={{ request.session.analysis_slug|urlencode }}{% endif %}" {% if request.resolver_match.url_name == 'optimize' or request.resolver_match.url_name == 'risk_parity' or request.resolver_match.url_name == 'rolling_optimization' %}class="active"{% endif %}>Optimize</a>
         <a href="#">All tools</a>
       </div>
       <div class="nav-note">No account needed</div>

@@ -40,6 +40,10 @@ class EngineUnavailableError(Exception):
     """Raised when portlab cannot be imported or a fatal engine error occurs."""
 
 
+class OptimizationInputError(ValueError):
+    """An input or insufficient history prevents a requested optimization."""
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -661,3 +665,201 @@ def _build_histogram(returns: pd.Series, var95: float, var99: float, n_bins: int
         "var95_line": round(float(-var95), 6),   # negative = left tail
         "var99_line": round(float(-var99), 6),
     }
+
+
+# ---------------------------------------------------------------------------
+# M3: optimization. All portlab imports stay inside this adapter.
+# ---------------------------------------------------------------------------
+
+def run_optimization(asset_returns, current_weights, method="max_sharpe",
+                     max_weight=0.5, rf=0.0, views=None, tc_bps=10.0):
+    """Bounded portfolio optimization on cached daily simple returns."""
+    from apps.analysis.optimization_options import METHODS
+
+    returns, current = _optimization_inputs(asset_returns, current_weights, max_weight)
+    if method not in METHODS:
+        raise OptimizationInputError("Choose a supported optimization method.")
+    if not np.isfinite(rf) or not np.isfinite(tc_bps) or tc_bps < 0:
+        raise OptimizationInputError("Risk-free rate and trading cost must be finite; cost cannot be negative.")
+    try:
+        import portlab.optimize as opt
+        import portlab.metrics as metrics
+        mu, cov = opt.mean_cov(returns, cov_method="ledoit_wolf")
+        estimate_mu = mu
+        if method == "black_litterman":
+            estimate_mu = _bl_returns(opt, cov, current, views, rf)
+        weights = _solve_optimization(opt, returns, estimate_mu, cov, current,
+                                      method, max_weight, rf, tc_bps)
+        _check_solution(weights, max_weight)
+        frontier = _bounded_frontier(opt, estimate_mu, cov, current, max_weight, rf)
+        current_stats = opt.portfolio_stats(current.values, estimate_mu, cov, rf)
+        optimized_stats = opt.portfolio_stats(weights.values, estimate_mu, cov, rf)
+        for stats, allocation in ((current_stats, current), (optimized_stats, weights)):
+            stats["cvar95"] = float(metrics.cvar_historical(returns @ allocation, alpha=.95))
+        traded_notional = float((weights - current).abs().sum())
+        current_risk = opt.risk_contributions(current, cov)
+        optimized_risk = opt.risk_contributions(weights, cov)
+        report = {
+            "method": method, "method_label": METHODS[method],
+            "weights": [{"symbol": s, "current": float(current[s]),
+                         "optimized": float(weights[s]), "change": float(weights[s] - current[s]),
+                         "current_risk": float(current_risk[s]),
+                         "optimized_risk": float(optimized_risk[s])} for s in returns.columns],
+            "current": current_stats, "optimized": optimized_stats,
+            "frontier": frontier,
+            "turnover": traded_notional / 2, "traded_notional": traded_notional,
+            "estimated_cost": traded_notional * tc_bps / 10000,
+            "max_weight": float(max_weight), "rf": float(rf), "tc_bps": float(tc_bps),
+            "n_observations": len(returns),
+            "return_basis": "Black-Litterman posterior (entered weights as reference prior)" if method == "black_litterman" else "Historical annualized arithmetic mean",
+            "data_vintage": {"start": str(returns.index[0].date()), "end": str(returns.index[-1].date())},
+        }
+        # Refuse nonfinite payloads before the template or JSON serializer sees them.
+        import json
+        json.dumps(report, allow_nan=False)
+        return report
+    except (OptimizationInputError, EngineUnavailableError):
+        raise
+    except Exception as exc:
+        logger.exception("engine.run_optimization failed")
+        raise EngineUnavailableError("The optimizer could not compute a valid allocation.") from exc
+
+
+def _optimization_inputs(asset_returns, current_weights, max_weight):
+    from apps.analysis.optimization_options import MIN_OBSERVATIONS
+
+    returns = pd.DataFrame(asset_returns, dtype=float).copy()
+    if returns.empty or len(returns) < MIN_OBSERVATIONS:
+        raise OptimizationInputError(f"Optimization needs {MIN_OBSERVATIONS}+ daily return observations.")
+    if not 1 <= len(returns.columns) <= 25 or returns.columns.has_duplicates:
+        raise OptimizationInputError("Choose 1 to 25 distinct portfolio holdings.")
+    if not np.isfinite(returns.to_numpy()).all() or (returns <= -1).any().any():
+        raise OptimizationInputError("Cached returns must be finite and greater than -100%.")
+    returns.index = pd.to_datetime(returns.index)
+    if not returns.index.is_monotonic_increasing or returns.index.has_duplicates:
+        raise OptimizationInputError("Return observations must have distinct, increasing dates.")
+    if not np.isfinite(max_weight) or not 0 < max_weight <= 1 or max_weight * len(returns.columns) < 1 - 1e-10:
+        raise OptimizationInputError("The weight cap is infeasible: holdings count times cap must be at least 100%.")
+    current = pd.Series(current_weights, dtype=float).reindex(returns.columns)
+    if not np.isfinite(current.to_numpy()).all() or (current < 0).any() or current.sum() <= 0:
+        raise OptimizationInputError("Current weights must be finite, nonnegative, and have a positive sum.")
+    current /= current.sum()
+    if (returns.std() <= 1e-12).any():
+        raise OptimizationInputError("Optimization needs nonconstant return history for every holding.")
+    return returns, current
+
+
+def _bl_returns(opt, cov, current, views, rf):
+    if not views:
+        raise OptimizationInputError("Black-Litterman needs at least one explicit return view.")
+    picks, targets, confidence = [], [], []
+    seen = set()
+    for view in views:
+        symbol = view.get("symbol")
+        target = float(view.get("return", float("nan")))
+        conf = float(view.get("confidence", float("nan")))
+        if symbol not in cov.columns or symbol in seen or not np.isfinite(target) or target <= -1 or not np.isfinite(conf) or not 0 < conf <= 1:
+            raise OptimizationInputError("Views need distinct portfolio symbols, finite returns above -100%, and confidence in (0, 100%].")
+        seen.add(symbol)
+        picks.append([float(s == symbol) for s in cov.columns])
+        targets.append(target)
+        confidence.append(conf)
+    return opt.black_litterman(cov, current, pd.DataFrame(picks, columns=cov.columns),
+        pd.Series(targets), view_confidence=pd.Series(confidence), rf=rf)
+
+
+def _solve_optimization(opt, returns, mu, cov, current, method, cap, rf, tc_bps):
+    bounds = (0.0, cap)
+    if method in ("max_sharpe", "black_litterman"):
+        result = opt.max_sharpe(mu, cov, rf=rf, bounds=bounds, solver="slsqp")
+    elif method == "gmv":
+        result = opt.gmv(mu, cov, bounds=bounds, solver="slsqp")
+    elif method == "risk_parity":
+        result = opt.equal_risk_contribution(cov, bounds=bounds)
+    elif method == "min_cvar":
+        result = opt.min_cvar(returns, alpha=.95, bounds=bounds)
+    else:
+        result = opt.opt_constrained(mu, cov, w_prev=current, tc_bps=tc_bps,
+                                     risk_aversion=5.0, bounds=bounds, rf=rf)
+    return result.reindex(returns.columns)
+
+
+def _check_solution(weights, cap):
+    values = weights.to_numpy(dtype=float)
+    if not np.isfinite(values).all() or abs(values.sum() - 1) > 1e-6 or values.min() < -1e-6 or values.max() > cap + 1e-6:
+        raise EngineUnavailableError("The optimizer returned an allocation outside the requested constraints.")
+
+
+def _bounded_frontier(opt, mu, cov, current, cap, rf, n_points=25):
+    """Use public portlab solves on targets feasible under the same asset cap."""
+    gmv = opt.gmv(mu, cov, bounds=(0.0, cap), solver="slsqp")
+    _check_solution(gmv, cap)
+    # Linear maximum-return endpoint under uniform box constraints.
+    high = pd.Series(0.0, index=mu.index)
+    remaining = 1.0
+    for symbol in mu.sort_values(ascending=False).index:
+        high[symbol] = min(cap, remaining)
+        remaining -= high[symbol]
+        if remaining <= 1e-12:
+            break
+    low_return = float(gmv @ mu)
+    high_return = float(high @ mu)
+    points = []
+    for target in np.linspace(low_return, high_return, n_points):
+        weights = opt.min_vol_at_return(mu, cov, float(target), bounds=(0.0, cap), solver="slsqp")
+        _check_solution(weights, cap)
+        stats = opt.portfolio_stats(weights.values, mu, cov, rf)
+        if abs(stats["return"] - target) > 1e-5:
+            raise EngineUnavailableError("A frontier solve did not reach its requested return.")
+        points.append({"risk": stats["volatility"], "return": stats["return"]})
+    return {"points": points,
+        "portfolio": _portfolio_point(opt, current, mu, cov, rf)}
+
+
+def _portfolio_point(opt, weights, mu, cov, rf):
+    stats = opt.portfolio_stats(weights.values, mu, cov, rf)
+    return {"risk": stats["volatility"], "return": stats["return"]}
+
+
+def run_rolling_optimization(asset_returns, current_weights, method="gmv",
+                             max_weight=.5, lookback=252, step=21, rf=0.0, tc_bps=10.0):
+    """Dated target allocations; each estimation window ends before its decision date."""
+    from apps.analysis.optimization_options import ROLLING_METHODS, MIN_OBSERVATIONS
+    returns, current = _optimization_inputs(asset_returns, current_weights, max_weight)
+    if method not in ROLLING_METHODS:
+        raise OptimizationInputError("Choose a supported rolling method.")
+    if not isinstance(lookback, int) or not MIN_OBSERVATIONS <= lookback <= 1260 or not isinstance(step, int) or not 5 <= step <= 252:
+        raise OptimizationInputError("Lookback must be 60 to 1260 days; rebalance interval 5 to 252 days.")
+    if not np.isfinite(tc_bps) or tc_bps < 0 or not np.isfinite(rf):
+        raise OptimizationInputError("Trading cost and risk-free rate must be finite; cost cannot be negative.")
+    if len(returns) <= lookback:
+        return {"young_history": True, "message": f"Rolling optimization needs {lookback + 1}+ daily return observations.", "rows": [],
+                "symbols": list(returns.columns), "method_label": ROLLING_METHODS[method]}
+    try:
+        import portlab.optimize as opt
+        rows = []
+        previous = current.copy()
+        last_position = None
+        for position in range(lookback, len(returns), step):
+            sample = returns.iloc[position - lookback:position]
+            if last_position is not None:
+                previous *= (1 + returns.iloc[last_position:position]).prod()
+                previous /= previous.sum()
+            mu, cov = opt.mean_cov(sample, cov_method="ledoit_wolf")
+            weights = _solve_optimization(opt, sample, mu, cov, previous, method, max_weight, rf, tc_bps)
+            _check_solution(weights, max_weight)
+            traded = float((weights - previous).abs().sum())
+            rows.append({"date": str(returns.index[position].date()),
+                         "training_end": str(sample.index[-1].date()),
+                         "weights": {s: float(weights[s]) for s in returns.columns},
+                         "turnover": traded / 2, "estimated_cost": traded * tc_bps / 10000})
+            previous = weights.copy()
+            last_position = position
+        return {"young_history": False, "rows": rows, "symbols": list(returns.columns),
+                "lookback": lookback, "step": step, "method_label": ROLLING_METHODS[method],
+                "data_vintage": {"start": str(returns.index[0].date()), "end": str(returns.index[-1].date())}}
+    except (OptimizationInputError, EngineUnavailableError):
+        raise
+    except Exception as exc:
+        logger.exception("engine.run_rolling_optimization failed")
+        raise EngineUnavailableError("Rolling optimization could not compute valid allocations.") from exc

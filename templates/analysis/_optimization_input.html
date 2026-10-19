@@ -1,0 +1,39 @@
+{% load sentinel_filters %}
+{% if error_reference %}
+  <div class="flash flash-error">The optimizer could not complete this request. Reference: {{ error_reference }}.</div>
+{% elif input_error %}
+  <div class="flash flash-warn">{{ input_error }}</div>
+  <p><a href="{% url 'analyze' %}" class="btn btn-outline">Choose a portfolio</a></p>
+{% elif not analysis %}
+  <div class="panel">
+    <h2>Choose a portfolio first</h2>
+    <p>Analyze your tickers and weights, then open Optimize to compare allocations.</p>
+    <p style="margin-top:1rem"><a href="{% url 'analyze' %}" class="btn btn-primary">Analyze a portfolio</a></p>
+  </div>
+{% else %}
+  <div class="panel">
+    <h2>Your portfolio</h2>
+    <div class="optimization-holdings">
+      {% for holding in holdings %}<span>{{ holding.symbol }} {{ holding.weight|pct:2 }}%</span>{% endfor %}
+    </div>
+    <p class="optimization-note">Uses this analysis's cached price history and date range. <a href="{% url 'analyze' %}">Change tickers or starting weights</a> in the Analyzer.</p>
+    <form method="get" class="optimization-form">
+      <input type="hidden" name="slug" value="{{ analysis.slug }}">
+      {% if form.non_field_errors %}<div class="wide">{{ form.non_field_errors }}</div>{% endif %}
+      {% for field in form %}
+        {% if field.is_hidden %}{{ field }}
+        {% else %}<div {% if field.name == 'views' %}class="wide"{% endif %}>
+          {{ field.label_tag }}{{ field }}{{ field.errors }}
+          {% if field.help_text %}<div class="helptext">{{ field.help_text }}</div>{% endif %}
+        </div>{% endif %}
+      {% endfor %}
+      <div class="wide"><button class="btn btn-primary" type="submit">{% if rolling %}Compute rolling allocations{% else %}Optimize portfolio{% endif %}</button></div>
+    </form>
+  </div>
+  <div class="optimization-links">
+    <a class="btn btn-outline" href="{% url 'optimize' %}?slug={{ analysis.slug|urlencode }}">Optimizer</a>
+    <a class="btn btn-outline" href="{% url 'risk_parity' %}?slug={{ analysis.slug|urlencode }}">Risk parity</a>
+    <a class="btn btn-outline" href="{% url 'rolling_optimization' %}?slug={{ analysis.slug|urlencode }}">Rolling optimization</a>
+    <a class="btn btn-outline" href="{% url 'shared_analysis' analysis.slug %}">View analysis</a>
+  </div>
+{% endif %}

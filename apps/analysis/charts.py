@@ -477,3 +477,38 @@ def regime_panel_chart(
         ],
         "meta": {"asof": asof, "label": _asof_label(asof)},
     }
+
+
+def optimization_charts(report):
+    asof = report["data_vintage"]["end"]
+    frontier = frontier_chart(report["frontier"]["points"], report["frontier"]["portfolio"], asof)
+    frontier["yAxis"]["name"] = "Expected annual return (%)"
+    # ECharts' string-template formatter does not index array values as {c[0]}.
+    frontier["tooltip"] = {"trigger": "item"}
+    frontier["series"].append({"name": "Optimized portfolio", "type": "scatter",
+        "data": [[report["optimized"]["volatility"] * 100, report["optimized"]["return"] * 100]],
+        "symbol": "diamond", "symbolSize": 14, "itemStyle": {"color": "#d97706"}})
+    frontier["legend"] = {"data": ["Frontier", "Your portfolio", "Optimized portfolio"]}
+    risk = {
+        "chart": "bar", "title": "Share of portfolio variance",
+        "xAxis": {"type": "category", "data": [row["symbol"] for row in report["weights"]]},
+        "yAxis": {"type": "value", "name": "Risk contribution (%)"},
+        "tooltip": {"trigger": "axis"}, "legend": {"data": ["Current", "Optimized"]},
+        "series": [{"name": label, "type": "bar", "data": [row[key] * 100 for row in report["weights"]],
+                    "itemStyle": {"color": color}} for label, key, color in
+                   (("Current", "current_risk", "#10233f"), ("Optimized", "optimized_risk", "#0e9f6e"))],
+        "meta": {"asof": asof, "label": _asof_label(asof)},
+    }
+    return {"frontier": frontier, "risk": risk}
+
+
+def rolling_weights_chart(report):
+    asof = report["data_vintage"]["end"]
+    return {"chart": "line", "title": "Rolling target weights",
+        "xAxis": {"type": "category", "data": [row["date"] for row in report["rows"]], "name": "Decision date", "nameLocation": "middle", "nameGap": 35},
+        "yAxis": {"type": "value", "min": 0, "max": 100, "name": "Target weight (%)"},
+        "legend": {"data": report["symbols"]}, "tooltip": {"trigger": "axis"},
+        "series": [{"name": symbol, "type": "line", "stack": "weights", "areaStyle": {},
+                    "step": "end", "showSymbol": len(report["rows"]) < 3,
+                    "data": [row["weights"][symbol] * 100 for row in report["rows"]]} for symbol in report["symbols"]],
+        "meta": {"asof": asof, "label": _asof_label(asof)}}

@@ -85,6 +85,9 @@ Visit:
 - **http://localhost:8000/securities/** — M0 gate page (price counts + latest dates)
 - **http://localhost:8000/admin/** — Django admin (securities, presets, analyses)
 - **http://localhost:8000/analyze** — portfolio analyzer; open Risk from a completed analysis
+- **http://localhost:8000/optimize** — optimize the selected analysis
+- **http://localhost:8000/tools/risk-parity** — compare risk contributions
+- **http://localhost:8000/tools/rolling-optimization** — dated rolling target allocations
 
 ---
 
@@ -98,7 +101,7 @@ export SECRET_KEY=dev-only-secret
 pytest
 ```
 
-Expected: **102 tests, all green** (M0, M1, and M2).
+Expected: **129 tests, all green** (M0 through M3).
 
 PowerShell equivalent:
 
@@ -154,11 +157,12 @@ sentinel/
 | **M0** ✅ | `pytest` green; securities list page works |
 | **M1** ✅ | Analyzer + golden tests + SPY anchors; 87 tests pass |
 | **M2** ✅ | RiskLens + VaR backtests; SPY anchors through database and web stack |
-| M3 | Optimizer |
+| **M3** ✅ | Optimizer, risk parity, rolling allocations; direct portlab weight gate |
 | M4 | All 19 tool pages |
 | M5 | Hardening + deploy |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
+M3 validation and calculation conventions: [gate report](docs/m3-gate.md).
 
 ---
 

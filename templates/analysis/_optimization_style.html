@@ -1,0 +1,23 @@
+<style>
+  .optimization-head {display:flex;justify-content:space-between;gap:1rem;align-items:baseline;flex-wrap:wrap;margin:1rem 0 1.5rem}
+  .optimization-head h1 {font-size:1.65rem}
+  .optimization-meta {color:var(--muted);font-size:.8rem}
+  .optimization-layout {display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:1.25rem;margin:1.25rem 0}
+  .optimization-layout>.panel {min-width:0}
+  .optimization-chart {height:360px;width:100%}
+  .optimization-form {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+  .optimization-form label {display:block;font-size:.85rem;font-weight:600;margin-bottom:.3rem}
+  .optimization-form input,.optimization-form select,.optimization-form textarea {width:100%;max-width:100%;border:1px solid var(--line);border-radius:6px;padding:.55rem;font:inherit;background:white}
+  .optimization-form .wide {grid-column:1/-1}
+  .optimization-form .helptext {font-size:.8rem;color:var(--muted)}
+  .optimization-form .errorlist {color:var(--red);font-size:.85rem;list-style:none;margin:.3rem 0}
+  .optimization-links {display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0}
+  .optimization-table {overflow-x:auto;margin:1rem 0}
+  .optimization-table table {min-width:450px}
+  .optimization-holdings {display:flex;gap:.5rem;flex-wrap:wrap;font-size:.85rem;margin-bottom:.75rem}
+  .optimization-holdings span {background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.25rem .5rem;font-variant-numeric:tabular-nums}
+  .optimization-note {color:var(--muted);font-size:.8rem;margin:.75rem 0}
+  .optimization-vintage {color:var(--muted);font-size:.75rem;margin-top:.75rem}
+  @media(max-width:860px) {.optimization-layout {grid-template-columns:minmax(0,1fr)}}
+  @media(max-width:600px) {.optimization-form {grid-template-columns:1fr}.optimization-chart {height:300px}.sentinel-nav .nav-note {display:none}.sentinel-nav .brand {margin-right:.5rem}.sentinel-nav .nav-links a {padding:.35rem .4rem;font-size:.8rem}.sentinel-nav .wrap {padding:0 .75rem}.page-wrap {padding:1rem .75rem}}
+</style>
