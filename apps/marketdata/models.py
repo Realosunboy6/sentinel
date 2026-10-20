@@ -10,6 +10,7 @@ Schema mirrors sentinel-schema.sql exactly:
 import uuid
 
 from django.db import models
+from apps.core.fields import FixedCharField
 
 
 class Security(models.Model):
@@ -24,9 +25,10 @@ class Security(models.Model):
     exchange = models.TextField(default="")
     name = models.TextField(null=True, blank=True)
     asset_type = models.TextField(default="stock", choices=ASSET_TYPE_CHOICES)
-    currency = models.CharField(max_length=3, default="USD")
+    currency = FixedCharField(max_length=3, default="USD")
 
     class Meta:
+        db_table = "securities"
         verbose_name_plural = "securities"
         unique_together = [("symbol", "exchange")]
         ordering = ["symbol"]
@@ -37,10 +39,10 @@ class Security(models.Model):
 
 class PriceHistory(models.Model):
     """
-    One row per (security, trading date).  Composite primary key expressed
-    as unique_together; Django uses an auto BigInt PK internally but the
-    uniqueness constraint matches the SQL schema.
+    One row per (security, trading date), using the locked composite primary key.
     """
+
+    pk = models.CompositePrimaryKey("security", "date")
 
     security = models.ForeignKey(
         Security, on_delete=models.CASCADE, related_name="pricehistory"
@@ -54,7 +56,7 @@ class PriceHistory(models.Model):
     volume = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
-        unique_together = [("security", "date")]
+        db_table = "price_history"
         ordering = ["security", "date"]
 
     def __str__(self):
@@ -73,10 +75,12 @@ class CorporateAction(models.Model):
         Security, on_delete=models.CASCADE, related_name="corporate_actions"
     )
     ex_date = models.DateField()
-    action_type = models.CharField(max_length=20, choices=ACTION_TYPE_CHOICES)
+    action_type = models.TextField(choices=ACTION_TYPE_CHOICES)
     ratio = models.DecimalField(max_digits=18, decimal_places=6)
 
     class Meta:
+        db_table = "corporate_actions"
+        constraints = [models.CheckConstraint(condition=models.Q(action_type__in=['SPLIT', 'STOCK_DIVIDEND', 'CASH_DIVIDEND']), name='corporate_actions_type_check')]
         unique_together = [("security", "ex_date", "action_type")]
         ordering = ["security", "ex_date"]
 

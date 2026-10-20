@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -38,18 +38,20 @@ class PriceSource(ABC):
     def validate(self, symbol: str) -> bool:
         """
         Return True if *symbol* is recognised by this source, False otherwise.
-        Should NOT raise; callers check the return value.
+        Unknown instruments return False; network failures may propagate.
         """
 
     @abstractmethod
     def fetch(
         self,
         symbol: str,
-        start: date,
+        start: date | None,
         end: date,
     ) -> pd.DataFrame:
         """
         Fetch OHLCV history for *symbol* between *start* and *end* (inclusive).
+        A None start requests maximum available history. Corporate actions
+        are carried in the returned DataFrame.attrs["actions"].
 
         Returns a DataFrame with columns:
             date (datetime.date), open, high, low, close, adj_close, volume
@@ -100,7 +102,7 @@ class YahooPriceSource(PriceSource):
 
     def validate(self, symbol: str) -> bool:
         try:
-            self.fetch(symbol, date(2000, 1, 1), date(2000, 12, 31))
+            self.fetch(symbol, None, date.today())
             return True
         except UnknownTickerError:
             return False
@@ -111,15 +113,16 @@ class YahooPriceSource(PriceSource):
     def fetch(
         self,
         symbol: str,
-        start: date,
+        start: date | None,
         end: date,
     ) -> pd.DataFrame:
         import yfinance as yf  # lazy import: keeps test mocking simple
 
+        window = {"start": start.isoformat()} if start is not None else {"period": "max"}
         raw = yf.download(
             symbol,
-            start=start.isoformat(),
-            end=end.isoformat(),
+            **window,
+            end=(end + timedelta(days=1)).isoformat(),
             auto_adjust=False,
             progress=False,
             actions=True,
@@ -134,6 +137,13 @@ class YahooPriceSource(PriceSource):
         raw = raw.rename(columns=_RENAME)
         raw.index.name = "date"
         raw.index = raw.index.date  # DatetimeIndex → date objects
+
+        actions = []
+        for day, row in raw.iterrows():
+            for column, action_type in (("Dividends", "CASH_DIVIDEND"), ("Stock Splits", "SPLIT")):
+                value = row.get(column, 0)
+                if pd.notna(value) and float(value) != 0:
+                    actions.append({"ex_date": day, "action_type": action_type, "ratio": float(value)})
 
         # Keep only the columns we care about; add any missing optional ones
         df = raw[[c for c in ("open", "high", "low", "close", "adj_close", "volume") if c in raw.columns]].copy()
@@ -156,4 +166,5 @@ class YahooPriceSource(PriceSource):
                 f"All rows for '{symbol}' had null close/adj_close after cleaning"
             )
 
+        df.attrs["actions"] = actions
         return df

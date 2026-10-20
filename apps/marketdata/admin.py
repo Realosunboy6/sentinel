@@ -31,17 +31,12 @@ class SecurityAdmin(admin.ModelAdmin):
         return obj._latest_date
 
 
-@admin.register(PriceHistory)
-class PriceHistoryAdmin(admin.ModelAdmin):
-    list_display = ("security", "date", "close", "adj_close", "volume")
-    list_filter = ("security__symbol",)
-    ordering = ("-date",)
-    raw_id_fields = ("security",)
-
-
 @admin.register(CorporateAction)
 class CorporateActionAdmin(admin.ModelAdmin):
     list_display = ("security", "ex_date", "action_type", "ratio")
     list_filter = ("action_type",)
     ordering = ("-ex_date",)
     raw_id_fields = ("security",)
+
+# Composite-key rows remain accessible through the ORM and securities summaries.
+# Django 5.2 admin does not support composite primary keys.

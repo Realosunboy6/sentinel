@@ -56,6 +56,7 @@ class PortfolioInputForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         self.cached_only = kwargs.pop("cached_only", False)
+        self.normalize = kwargs.pop("normalize", False)
         super().__init__(*args, **kwargs)
         today = date.today()
         year = today.year - DEFAULT_YEARS
@@ -124,7 +125,9 @@ class PortfolioInputForm(forms.Form):
                 )
 
         total = sum(h["weight"] for h in holdings)
-        if abs(total - 100.0) > WEIGHT_SUM_TOLERANCE:
+        if total <= 0:
+            raise ValidationError("Enter positive weights before normalizing.")
+        if not self.normalize and abs(total - 100.0) > WEIGHT_SUM_TOLERANCE:
             raise ValidationError(
                 f"Weights sum to {total:.2f}%. They must total 100% "
                 f"(±{WEIGHT_SUM_TOLERANCE}%). Use Normalize to fix."

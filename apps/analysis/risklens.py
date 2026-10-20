@@ -15,7 +15,7 @@ from datetime import date
 
 import pandas as pd
 
-from apps.analysis.analyzer import load_prices, make_returns
+from apps.analysis.analyzer import prepare_prices, make_returns
 from apps.analysis.charts import histogram_chart, regime_panel_chart, drawdown_chart
 from apps.analysis.engine import EngineUnavailableError, run_risklens
 from apps.analysis.models import Analysis
@@ -48,26 +48,19 @@ def get_risklens(slug: str) -> tuple[Analysis, dict, dict]:
         start_date = today.replace(year=year, day=min(today.day, monthrange(year, today.month)[1]))
 
     end_date = date.fromisoformat(analysis.inputs["end"]) if analysis.inputs.get("end") else date.today()
-    prices_df = load_prices(symbols, start_date, end_date)
-    if prices_df.empty or not set(symbols).issubset(prices_df.columns):
-        raise EngineUnavailableError("No price data available for this analysis.")
-
+    try:
+        holdings, prices_df, warnings = prepare_prices(stored_holdings, start_date, end_date)
+    except ValueError as exc:
+        raise EngineUnavailableError(str(exc)) from exc
     returns_df = make_returns(prices_df)
-    if returns_df.empty:
-        raise EngineUnavailableError("At least two cached prices per holding are needed.")
-    weights = [h["weight"] for h in stored_holdings]
-    weight_sum = sum(weights)
-    if weight_sum <= 0:
-        raise EngineUnavailableError("Portfolio weights must have a positive sum.")
-    norm_weights = [w / weight_sum for w in weights]
-
-    port_returns = (returns_df[symbols] * norm_weights).sum(axis=1)
+    port_returns = sum(returns_df[h['symbol']] * h['weight'] for h in holdings)
 
     asof = str(prices_df.index.max().date()
                if hasattr(prices_df.index.max(), "date")
                else prices_df.index.max())
 
     risk_metrics = run_risklens(port_returns)
+    risk_metrics["warnings"] = warnings
     charts = _build_risk_charts(risk_metrics, asof)
 
     return analysis, risk_metrics, charts

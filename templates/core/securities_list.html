@@ -29,7 +29,7 @@
         {{ sec.price_count|default:"0" }}
       </td>
       <td style="padding:0.5rem 0.75rem;text-align:right;font-variant-numeric:tabular-nums;color:#57606a;">
-        {{ sec.latest_date|default:"—" }}
+        {{ sec.latest_date|default:"—" }}{% if sec.stale %}<br><strong>Missing or stale history — refresh before using current dates.</strong>{% endif %}
       </td>
     </tr>
     {% endfor %}

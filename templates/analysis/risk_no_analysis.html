@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block title %}RiskLens | Sentinel{% endblock %}
 {% block content %}
+<form method="post" action="{% url 'risk' %}" data-portfolio-form>
+  {% csrf_token %}{% if analysis %}<input type="hidden" name="slug" value="{{ analysis.slug }}">{% endif %}
+  {% include "analysis/_portfolio_fields.html" %}
+  <button type="submit" class="btn btn-primary">Update RiskLens</button>
+</form>
 <h1>RiskLens</h1>
 <p>Analyze a portfolio first to view its risk report.</p>
 <p><a href="{% url 'analyze' %}">Analyze a portfolio</a></p>
 {% endblock %}
+
+{% block extra_scripts %}{% include "analysis/_portfolio_scripts.html" %}{% endblock %}

@@ -11,7 +11,7 @@
   .kpi .value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #1f2328; }
   .kpi .value.down { color: #dc2626; }
   .kpi .sub { font-size: 0.75rem; color: #57606a; margin-top: 0.2rem; }
-  .chart-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .chart-panel { min-width:0; overflow-x:auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
   .chart-panel h3 { font-size: 0.875rem; font-weight: 600; color: #1f2328; margin: 0 0 0.75rem; }
   .chart-panel .vintage { font-size: 0.72rem; color: #57606a; margin-top: 0.5rem; }
   .echarts-div { width: 100%; height: 320px; }
@@ -31,6 +31,8 @@
   .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
   @media (max-width: 720px) { .cols-2 { grid-template-columns: 1fr; } }
   .read-only-banner { background: #f7f8fa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #57606a; display: flex; align-items: center; gap: 0.5rem; }
+  .page-head {flex-wrap:wrap;gap:.5rem} .share-bar {flex-wrap:wrap;overflow-wrap:anywhere} .share-bar code {overflow-wrap:anywhere;word-break:break-all}
+  @media(max-width:600px) {#chart-monthly {min-width:550px}}
 </style>
 {% endblock %}
 
@@ -41,11 +43,13 @@
   <h1 style="font-size:1.4rem">Portfolio analysis</h1>
   <span class="meta">
     {% if data_vintage.start and data_vintage.end %}
-      {{ data_vintage.start }} – {{ data_vintage.end }} &middot; monthly rebalanced &middot; dividends reinvested
+      {{ data_vintage.start }} – {{ data_vintage.end }} &middot; daily constant-mix &middot; dividends reinvested
     {% endif %}
   </span>
 </div>
 
+{% for warning in metrics.warnings %}<p class="flash flash-warn" role="status">{{ warning }}</p>{% endfor %}
+{% if metrics.young_history %}<p class="flash flash-warn">Short history: statistics needing more observations are unavailable. Backtests need 250+ scored observations.</p>{% endif %}
 <!-- Share bar (spec §10) -->
 <div class="share-bar">
   <span>&#128279; Share this analysis:</span>
@@ -76,8 +80,8 @@
   </div>
   <div class="kpi">
     <div class="label">Sharpe ratio</div>
-    <div class="value {% if p.sharpe < 0 %}down{% endif %}">{{ p.sharpe|floatformat:2 }}</div>
-    <div class="sub">Sortino {{ p.sortino|floatformat:2 }}</div>
+    <div class="value {% if p.sharpe < 0 %}down{% endif %}">{{ p.sharpe|floatformat:2|default:"Unavailable" }}</div>
+    <div class="sub">Sortino {{ p.sortino|floatformat:2|default:"Unavailable" }}</div>
   </div>
   <div class="kpi">
     <div class="label">Max drawdown</div>
@@ -96,7 +100,7 @@
 <!-- Growth line chart                                            -->
 <!-- ============================================================ -->
 <div class="chart-panel">
-  <h3>Portfolio growth vs benchmark</h3>
+  <h3>Portfolio growth vs benchmark</h3><button type="button" id="growth-scale" class="btn btn-outline">Use log scale</button>
   <div class="echarts-div tall" id="chart-growth"></div>
   <div class="vintage">{{ asof }}</div>
 </div>
@@ -121,8 +125,8 @@
     <tbody>
       <tr><td>CAGR</td><td class="{% if p.cagr >= 0 %}up{% else %}dn{% endif %}">{{ p.cagr|pct:2 }}%</td><td>{{ b.cagr|pct:2 }}%</td></tr>
       <tr><td>Ann. volatility</td><td>{{ p.vol|pct:2 }}%</td><td>{{ b.vol|pct:2 }}%</td></tr>
-      <tr><td>Sharpe ratio</td><td>{{ p.sharpe|floatformat:3 }}</td><td>{{ b.sharpe|floatformat:3 }}</td></tr>
-      <tr><td>Sortino ratio</td><td>{{ p.sortino|floatformat:3 }}</td><td>{{ b.sortino|floatformat:3 }}</td></tr>
+      <tr><td>Sharpe ratio</td><td>{{ p.sharpe|floatformat:3|default:"Unavailable" }}</td><td>{{ b.sharpe|floatformat:3|default:"Unavailable" }}</td></tr>
+      <tr><td>Sortino ratio</td><td>{{ p.sortino|floatformat:3|default:"Unavailable" }}</td><td>{{ b.sortino|floatformat:3|default:"Unavailable" }}</td></tr>
       <tr><td>Max drawdown</td><td class="dn">{{ p.maxdd|pct:2 }}%</td><td class="dn">{{ b.maxdd|pct:2 }}%</td></tr>
       <tr><td>Best day</td><td class="up">{{ metrics.best_day|pct:2 }}%</td><td>—</td></tr>
       <tr><td>Worst day</td><td class="dn">{{ metrics.worst_day|pct:2 }}%</td><td>—</td></tr>
@@ -200,8 +204,8 @@
         <td style="font-weight:600">{{ sym }}</td>
         <td class="{% if a.cagr >= 0 %}up{% else %}dn{% endif %}">{{ a.cagr|pct:2 }}%</td>
           <td>{{ a.vol|pct:2 }}%</td>
-          <td>{{ a.sharpe|floatformat:3 }}</td>
-          <td>{{ a.sortino|floatformat:3 }}</td>
+          <td>{{ a.sharpe|floatformat:3|default:"Unavailable" }}</td>
+          <td>{{ a.sortino|floatformat:3|default:"Unavailable" }}</td>
           <td class="dn">{{ a.maxdd|pct:2 }}%</td>
           <td>${{ a.end|dollar:0 }}</td>
       </tr>
@@ -233,7 +237,33 @@ function initChart(id, payload) {
   };
   // Remove undefined keys
   Object.keys(opt).forEach(k => opt[k] === undefined && delete opt[k]);
+  if (id === 'chart-monthly') {
+    const period = p => `${payload.yAxis.data[p.value[1]]} ${payload.xAxis.data[p.value[0]]}`;
+    opt.tooltip.formatter = p => `${period(p)}: ${Number(p.value[2]).toFixed(4)}%`;
+    opt.series[0].label.formatter = p => `${Number(p.value[2]).toFixed(1)}%`;
+    opt.series[0].label.fontSize = 9;
+    opt.xAxis.axisLabel = {interval:0, fontSize:9};
+  }
+  if (id === 'chart-correlation') {
+    opt.tooltip.formatter = p => `${payload.yAxis.data[p.value[1]]} / ${payload.xAxis.data[p.value[0]]}: ${p.value[2] === null ? 'Unavailable' : Number(p.value[2]).toFixed(4)}`;
+    opt.series[0].label.formatter = p => p.value[2] === null ? '—' : Number(p.value[2]).toFixed(2);
+  }
+  if (id === 'chart-frontier') opt.tooltip.formatter = p => `${p.seriesName}<br>Vol: ${Number(p.value[0]).toFixed(4)}%<br>Return: ${Number(p.value[1]).toFixed(4)}%`;
+  if (id === 'chart-monthly' || id === 'chart-correlation') {
+    opt.visualMap = {...payload.visualMap, orient:'horizontal', left:'center', bottom:0, itemWidth:10, itemHeight:90};
+    opt.grid.bottom = 65;
+  }
   chart.setOption(opt);
+  if (id === 'chart-growth') {
+    const button = document.getElementById('growth-scale');
+    button.disabled = payload.series.some(s => s.data.some(v => !(v > 0)));
+    let logarithmic = false;
+    button.addEventListener('click', () => {
+      logarithmic = !logarithmic;
+      chart.setOption({yAxis:{type:logarithmic ? 'log' : 'value'}});
+      button.textContent = logarithmic ? 'Use linear scale' : 'Use log scale';
+    });
+  }
   window.addEventListener('resize', () => chart.resize());
 }
 

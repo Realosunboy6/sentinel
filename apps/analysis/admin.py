@@ -24,12 +24,6 @@ class AnalysisAdmin(admin.ModelAdmin):
         return obj.input_hash[:12] + "…"
 
 
-@admin.register(AnalysisResult)
-class AnalysisResultAdmin(admin.ModelAdmin):
-    list_display = ("input_hash_short", "data_asof", "computed_at")
-    ordering = ("-computed_at",)
-    readonly_fields = ("input_hash", "data_asof", "computed_at")
 
-    @admin.display(description="Input hash")
-    def input_hash_short(self, obj):
-        return obj.input_hash[:12] + "…"
+# Composite-key rows remain accessible through the ORM and securities summaries.
+# Django 5.2 admin does not support composite primary keys.

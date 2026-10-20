@@ -164,8 +164,9 @@ def test_short_history_page(client):
 def test_missing_analysis_and_engine(client):
     assert client.get("/risk").status_code == 200
     assert client.get("/risk?slug=missing").status_code == 404
+    analysis = create_analysis([{"symbol": "SPY", "weight": 1}], "2021-01-01", "2026-10-16")
     with patch("apps.analysis.risklens.get_risklens", side_effect=EngineUnavailableError("unavailable")):
-        assert client.get("/risk?slug=existing").status_code == 503
+        assert client.get("/risk", {"slug": analysis.slug}).status_code == 503
 
 
 @pytest.mark.django_db

@@ -3,7 +3,7 @@ Analysis models: Analysis, AnalysisResult, Preset.
 
 Schema mirrors sentinel-schema.sql exactly:
   - analyses has NO auto-increment identity column; slug is the share token
-  - Results cache keyed (input_hash, data_asof) — never mutated
+  - Results cache keyed (input_hash, data_asof); obsolete derived entries expire
 """
 
 import uuid
@@ -25,6 +25,7 @@ class Analysis(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "analyses"
         verbose_name_plural = "analyses"
         ordering = ["-created_at"]
 
@@ -35,16 +36,17 @@ class Analysis(models.Model):
 class AnalysisResult(models.Model):
     """
     Cached result for (input_hash, data_asof).  Pure function: same inputs +
-    same data vintage → same result.  Old rows are never mutated.
+    same actual price vintage → same result. Price corrections expire derived entries.
     """
 
+    pk = models.CompositePrimaryKey("input_hash", "data_asof")
     input_hash = models.TextField()
     data_asof = models.DateField()
     metrics = models.JSONField()
     computed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [("input_hash", "data_asof")]
+        db_table = "analysis_results"
         ordering = ["-computed_at"]
 
     def __str__(self):
@@ -62,6 +64,7 @@ class Preset(models.Model):
     inputs = models.JSONField()
 
     class Meta:
+        db_table = "presets"
         ordering = ["slug"]
 
     def __str__(self):

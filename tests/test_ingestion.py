@@ -102,32 +102,17 @@ class TestIngestSecurity:
         # Rows should be 3, not 6
         assert PriceHistory.objects.filter(security=security).count() == 3
 
-    def test_incremental_refresh_fetches_from_day_after_latest(self):
-        """On a second call, fetch() is called starting the day after the latest stored date."""
-        from datetime import timedelta
-
+    def test_refresh_rechecks_full_history_and_reconciles_old_adjustments(self):
+        """A dividend revision must update earlier adjusted closes, not just append."""
         df = _make_price_df(rows=3, start="2021-01-04")
         src = _mock_source(df)
         ingest_security("IWM", src)
-
-        # Snapshot the latest stored date BEFORE the second ingest call.
-        security = Security.objects.get(symbol="IWM")
-        latest_after_first = (
-            PriceHistory.objects.filter(security=security)
-            .order_by("-date")
-            .values_list("date", flat=True)
-            .first()
-        )
-
-        # Second call: simulate new data arriving the next trading day.
-        new_df = _make_price_df(rows=2, start="2021-01-07")
-        src.fetch.return_value = new_df
+        revised = df.copy()
+        revised.loc[date(2021, 1, 4), "adj_close"] = 90.0
+        src.fetch.return_value = revised
         ingest_security("IWM", src)
-
-        # The start argument passed to fetch() on the second call must be
-        # exactly one calendar day after the latest stored date.
-        second_call_start = src.fetch.call_args_list[1][0][1]
-        assert second_call_start == latest_after_first + timedelta(days=1)
+        assert src.fetch.call_args.args[1] is None  # PriceSource maximum history
+        assert PriceHistory.objects.get(security__symbol="IWM", date=date(2021, 1, 4)).adj_close == Decimal('90.0000')
 
     def test_unknown_ticker_raises_and_does_not_create_row(self):
         src = _unknown_source()

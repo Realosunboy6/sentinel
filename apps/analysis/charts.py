@@ -166,13 +166,19 @@ def monthly_heatmap_chart(
     # Build data as [month_idx, year_idx, value*100]
     year_index = {y: i for i, y in enumerate(years)}
     data = [
-        [r["month"] - 1, year_index[r["year"]], round(r["value"] * 100, 2)]
+        [r["month"] - 1, year_index[r["year"]], round(r["value"] * 100, 4)]
         for r in monthly_rows
     ]
+    for year in years:
+        annual = 1.0
+        for row in monthly_rows:
+            if row['year'] == year:
+                annual *= 1 + row['value']
+        data.append([12, years.index(year), round((annual - 1) * 100, 4)])
     return {
         "chart": "heatmap",
         "title": "Monthly Returns (%)",
-        "xAxis": {"data": _MONTH_LABELS, "type": "category"},
+        "xAxis": {"data": _MONTH_LABELS + ["Annual"], "type": "category"},
         "yAxis": {"data": [str(y) for y in years], "type": "category"},
         "visualMap": {
             "min": -15,
@@ -253,7 +259,7 @@ def correlation_heatmap_chart(
             "min": -1,
             "max": 1,
             "calculable": True,
-            "inRange": {"color": ["#dc2626", "#ffffff", "#0e9f6e"]},
+            "inRange": {"color": ["#dc2626", "#ffffff", "#3b82d4"]},
         },
         "tooltip": {
             "trigger": "item",
@@ -263,7 +269,7 @@ def correlation_heatmap_chart(
             {
                 "name": "Correlation",
                 "type": "heatmap",
-                "data": [[d[0], d[1], round(d[2], 4)] for d in data],
+                "data": [[d[0], d[1], round(d[2], 4) if d[2] is not None else None] for d in data],
                 "label": {
                     "show": True,
                     "formatter": "{c}",
@@ -288,9 +294,9 @@ def frontier_chart(
         [round(p["risk"] * 100, 4), round(p["return"] * 100, 4)]
         for p in risk_return_points
     ]
-    port_data = [
-        [round(portfolio_point["risk"] * 100, 4), round(portfolio_point["return"] * 100, 4)]
-    ]
+    port_data = []
+    if portfolio_point.get('risk') is not None and portfolio_point.get('return') is not None:
+        port_data = [[round(portfolio_point['risk'] * 100, 4), round(portfolio_point['return'] * 100, 4)]]
     return {
         "chart": "scatter",
         "title": "Efficient Frontier",
@@ -401,11 +407,11 @@ def histogram_chart(
     bar_data = [
         {
             "value": [float(b * 100), c],
-            "itemStyle": {"color": "#dc2626" if b <= var95_line else "#10233f"},
+            "itemStyle": {"color": "#dc2626" if var95_line is not None and b <= var95_line else "#10233f"},
         }
         for b, c in zip(bins, counts)
     ]
-    return {
+    payload = {
         "chart": "bar",
         "title": "Daily Return Distribution",
         "xAxis": {
@@ -430,12 +436,12 @@ def histogram_chart(
                     "symbol": "none",
                     "data": [
                         {
-                            "xAxis": var95_line * 100,
+                            "xAxis": var95_line * 100 if var95_line is not None else None,
                             "lineStyle": {"color": "#dc2626", "type": "dashed", "width": 2},
                             "label": {"formatter": "VaR 95%", "position": "insideEndTop"},
                         },
                         {
-                            "xAxis": var99_line * 100,
+                            "xAxis": var99_line * 100 if var99_line is not None else None,
                             "lineStyle": {"color": "#7f1d1d", "type": "dashed", "width": 2},
                             "label": {"formatter": "VaR 99%", "position": "insideEndTop"},
                         },
@@ -445,6 +451,9 @@ def histogram_chart(
         ],
         "meta": {"asof": asof, "label": _asof_label(asof)},
     }
+
+    payload['series'][0]['markLine']['data'] = [line for line in payload['series'][0]['markLine']['data'] if line['xAxis'] is not None]
+    return payload
 
 
 def regime_panel_chart(
@@ -479,7 +488,7 @@ def regime_panel_chart(
                 "data": [
                     {"value": round(calm_var95 * 100, 3) if calm_var95 is not None else None, "itemStyle": {"color": "#0e9f6e"}},
                     {"value": round(stressed_var95 * 100, 3) if stressed_var95 is not None else None, "itemStyle": {"color": "#dc2626"}},
-                    {"value": round(full_var95 * 100, 3),     "itemStyle": {"color": "#10233f"}},
+                    {"value": round(full_var95 * 100, 3) if full_var95 is not None else None,     "itemStyle": {"color": "#10233f"}},
                 ],
             }
         ],

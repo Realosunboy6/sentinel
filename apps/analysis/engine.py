@@ -48,6 +48,25 @@ class OptimizationInputError(ValueError):
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def engine_version():
+    """Resolve engine metadata within the adapter, keeping imports lazy."""
+    from importlib.metadata import version, PackageNotFoundError
+    try:
+        return version('portlab')
+    except PackageNotFoundError as exc:
+        raise EngineUnavailableError('portlab is not installed.') from exc
+
+
+def _json_finite(value):
+    if isinstance(value, dict):
+        return {k: _json_finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_finite(v) for v in value]
+    if isinstance(value, (float, np.floating)) and not np.isfinite(value):
+        return None
+    return value
+
+
 def run_analysis(
     holdings: list[dict],
     prices_df: pd.DataFrame,
@@ -88,10 +107,10 @@ def run_analysis(
         ) from exc
 
     try:
-        return _run(
+        return _json_finite(_run(
             holdings, prices_df, benchmark_returns, tail_alpha,
             pl_metrics, pl_var, pl_tail, pl_regime, pl_cov, pl_opt,
-        )
+        ))
     except EngineUnavailableError:
         raise
     except Exception as exc:
@@ -176,13 +195,12 @@ def _run(
     # Tail diagnostics
     # jarque_bera returns a dict; hill_estimator returns a dict and needs k.
     # ------------------------------------------------------------------
-    jb_result = pl_tail.jarque_bera(port_returns)
-    jb_p = float(jb_result.get("p_value", jb_result.get("pvalue", 0.0)))
-    # Hill estimator: use k = int(sqrt(n)) as a standard rule of thumb
     n = len(port_returns)
-    k_hill = max(10, int(n ** 0.5))
-    hill_result = pl_tail.hill_estimator(port_returns.abs(), k=k_hill)
-    hill = float(hill_result.get("xi", hill_result.get("hill", 0.0)))
+    jb_result = pl_tail.jarque_bera(port_returns) if n >= 8 else {}
+    jb_p = jb_result.get('p_value', jb_result.get('pvalue'))
+    losses = -port_returns
+    k_hill = min(max(2, int(n ** .5)), int((losses > 0).sum()), n - 1)
+    hill = float(pl_tail.hill_estimator(losses, k=k_hill)['xi']) if k_hill >= 2 else None
     skew = float(port_returns.skew())
     exkurt = float(port_returns.kurtosis())  # excess kurtosis
 
@@ -241,7 +259,7 @@ def _run(
         "es95": es95,
         "skew": skew,
         "exkurt": exkurt,
-        "jb_p": float(jb_p),
+        "jb_p": jb_p,
         "hill": hill,
         "best_day": best_day,
         "worst_day": worst_day,
@@ -249,6 +267,7 @@ def _run(
         "best": _best_year(annual),
         "worst": _worst_year(annual),
         "regime": regime_label,
+        "young_history": len(port_returns) < 60,
         "correlation": {"labels": corr_labels, "matrix": corr_matrix},
         "frontier": frontier_data,
         "growth": {
@@ -275,9 +294,9 @@ def _performance_metrics(returns: pd.Series, conf_level: float, pl_metrics) -> d
     We use rf=0.0 for simplicity (consistent with typical academic usage).
     """
     cagr_val = float(pl_metrics.cagr(returns))
-    vol_val  = float(pl_metrics.ann_vol(returns))
-    sh_val   = float(pl_metrics.sharpe(returns, rf=0.0))
-    so_val   = float(pl_metrics.sortino(returns, rf=0.0))
+    vol_val  = float(pl_metrics.ann_vol(returns)) if len(returns) >= 2 else None
+    sh_val   = float(pl_metrics.sharpe(returns, rf=0.0)) if len(returns) >= 2 else None
+    so_val   = float(pl_metrics.sortino(returns, rf=0.0)) if len(returns) >= 2 else None
     mdd_val  = float(pl_metrics.max_drawdown(returns))
     end_val  = float((1 + returns).prod() * 10_000)
     return {
@@ -311,13 +330,15 @@ def _detect_regime(returns: pd.Series, pl_regime) -> str:
         label = pl_regime.detect_regime(returns)
         if isinstance(label, pd.Series):
             label = label.iloc[-1]
-        return str(label)
+        return {0: "Calm", 1: "Stressed"}.get(label, "Unknown")
     except Exception:
         return "unknown"
 
 
 def _correlation(asset_returns: pd.DataFrame, pl_cov) -> tuple[list[str], list[list[float]]]:
     labels = list(asset_returns.columns)
+    if len(asset_returns) < 2:
+        return labels, [[None for _ in labels] for _ in labels]
     try:
         cov = pl_cov.cov_sample(asset_returns)
         corr = pl_cov.corr_from_cov(cov)
@@ -342,6 +363,8 @@ def _frontier(
       mu  = annualised expected returns (pd.Series)
       cov = annualised covariance matrix (pd.DataFrame)
     """
+    if len(asset_returns) < 2:
+        return {'points': [], 'portfolio': {'risk': None, 'return': None}}
     try:
         import portlab.covariance as pl_cov2
         # Annualised mean returns and covariance
@@ -367,7 +390,7 @@ def _frontier(
     import portlab.metrics as pl_metrics
     port_returns_series = (asset_returns * weights).sum(axis=1)
     port_vol = float(pl_metrics.ann_vol(port_returns_series))
-    port_ret = float(pl_metrics.cagr(port_returns_series))
+    port_ret = float(weights @ (asset_returns.mean() * 252))
     portfolio_dot = {"risk": round(port_vol, 6), "return": round(port_ret, 6)}
 
     return {"points": points, "portfolio": portfolio_dot}
@@ -464,8 +487,20 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
         returns.index = pd.to_datetime(returns.index)
 
     n = len(returns)
-    if n < 2 or not np.isfinite(returns.to_numpy(dtype=float)).all():
-        raise ValueError("RiskLens needs at least two finite daily returns.")
+    if n < 1 or not np.isfinite(returns.to_numpy(dtype=float)).all():
+        raise ValueError("RiskLens needs finite daily returns.")
+    if n == 1:
+        histogram = _build_histogram(returns, 0.0, 0.0)
+        histogram['var95_line'] = histogram['var99_line'] = None
+        backtest = {key: None for key in ['kupiec_lr', 'kupiec_p', 'kupiec_reject', 'chris_n00', 'chris_n01', 'chris_n10', 'chris_n11', 'chris_lr', 'chris_p', 'joint_lr', 'joint_p']}
+        backtest.update(n_scored=0, n_exceptions=0, young_history=True, basel_zone='INSUFFICIENT DATA')
+        return {'var_table': [{'method': method, 'var95': None, 'var99': None, 'es95': None, 'es99': None} for method in ['Historical', 'Parametric', 'Parametric (t)', 'Cornish-Fisher', 'GARCH']],
+            'backtest': backtest, 'regime': {'current': 'Unknown', 'calm_var95': None, 'stressed_var95': None, 'full_var95': None},
+            'tail': {'skew': None, 'exkurt': None, 'jb_p': None, 'hill': None, 'worst_day': float(returns.min()), 'best_day': float(returns.max())},
+            'histogram': histogram, 'stress_scenarios': [], 'data_vintage': {'start': str(returns.index[0].date()), 'end': str(returns.index[-1].date())},
+            'var95': None, 'var99': None, 'es95': None, 'es99': None, 'basel_zone': 'INSUFFICIENT DATA',
+            'drawdown': {'dates': [str(returns.index[0].date())], 'values': [0.0]}}
+
     alpha99 = 0.01  # tail probability for 99% VaR
     # A single final expanding forecast: same observations and alignment as
     # window=None, without fitting Student-t MLE on every intermediate day.
@@ -477,6 +512,7 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
     hist_var95  = float(pl_var.historical_var(returns, alpha=tail_alpha, window=point_window).iloc[-1])
     hist_var99  = float(pl_var.historical_var(returns, alpha=alpha99, window=point_window).iloc[-1])
     hist_es95   = float(pl_var.expected_shortfall(returns, alpha=tail_alpha, window=point_window).iloc[-1])
+    hist_es99 = float(pl_var.expected_shortfall(returns, alpha=alpha99, window=point_window).iloc[-1])
 
     # Parametric (mean="constant" per spec §5.4)
     param_var95 = _finite_or_none(pl_var.parametric_var(returns, alpha=tail_alpha, mean="constant", window=point_window).iloc[-1])
@@ -502,11 +538,11 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
         garch_var95 = garch_var99 = None
 
     var_table = [
-        {"method": "Historical",       "var95": hist_var95,   "var99": hist_var99,   "es95": hist_es95},
-        {"method": "Parametric",       "var95": param_var95,  "var99": param_var99,  "es95": None},
-        {"method": "Parametric (t)",   "var95": parm_t_var95, "var99": parm_t_var99, "es95": None},
-        {"method": "Cornish-Fisher",   "var95": cf_var95,     "var99": cf_var99,     "es95": None},
-        {"method": "GARCH",            "var95": garch_var95,  "var99": garch_var99,  "es95": None},
+        {"method": "Historical",       "var95": hist_var95,   "var99": hist_var99,   "es95": hist_es95, "es99": hist_es99},
+        {"method": "Parametric",       "var95": param_var95,  "var99": param_var99,  "es95": None, "es99": None},
+        {"method": "Parametric (t)",   "var95": parm_t_var95, "var99": parm_t_var99, "es95": None, "es99": None},
+        {"method": "Cornish-Fisher",   "var95": cf_var95,     "var99": cf_var99,     "es95": None, "es99": None},
+        {"method": "GARCH",            "var95": garch_var95,  "var99": garch_var99,  "es95": None, "es99": None},
     ]
 
     # ------------------------------------------------------------------
@@ -589,7 +625,7 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
     jb_result = pl_tail.jarque_bera(returns) if n >= 8 else {}
     jb_p = jb_result.get("p_value", jb_result.get("pvalue"))
     losses = -returns
-    k_hill = min(max(2, int(n ** 0.5)), int((losses > 0).sum()))
+    k_hill = min(max(2, int(n ** 0.5)), int((losses > 0).sum()), n - 1)
     hill = float(pl_tail.hill_estimator(losses, k=k_hill)["xi"]) if k_hill >= 2 else None
 
     tail = {
@@ -627,6 +663,7 @@ def _run_risklens(port_returns, tail_alpha, backtest_window, pl_var, pl_bt, pl_t
         "var95":  hist_var95,
         "var99":  hist_var99,
         "es95":   hist_es95,
+        "es99":   hist_es99,
         "basel_zone": backtest["basel_zone"],
         "drawdown": {"dates": [str(d.date()) for d in returns.index],
                      "values": _drawdown_series(returns, None).tolist()},

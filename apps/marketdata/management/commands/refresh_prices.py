@@ -42,12 +42,8 @@ class Command(BaseCommand):
         source = YahooPriceSource()
         symbols = options.get("symbols") or []
 
-        if symbols:
-            targets = [s.upper().strip() for s in symbols]
-        else:
-            targets = list(
-                Security.objects.order_by("symbol").values_list("symbol", flat=True)
-            )
+        tracked = Security.objects.order_by("symbol").values_list("symbol", flat=True)
+        targets = sorted(set(tracked) | {s.upper().strip() for s in symbols})
 
         if not targets:
             self.stdout.write(self.style.WARNING("No symbols to refresh."))

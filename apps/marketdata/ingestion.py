@@ -1,105 +1,44 @@
-"""
-Market-data ingestion service.
-
-Entry point: ingest_security(symbol, source)
-
-This module is the ONLY place that writes to price_history and
-corporate_actions.  It is called by the nightly refresh_prices management
-command and may be called directly in tests (with a mocked source).
-
-Design rules (from spec §6):
-- Validate the ticker at the source before creating any DB row.
-- Upsert price_history rows (new days appended; existing rows updated if
-  adj_close changed — e.g. after a dividend retroactive adjustment).
-- Never mutate old price_history rows except via the nightly upsert.
-- corporate_actions rows are also upserted.
-"""
-
-from __future__ import annotations
-
-import logging
-from datetime import date, timedelta
+"""Atomic market-data refresh, corporate actions and corrected-price cache expiry."""
+from datetime import date
 from typing import Optional
-
+import logging
 import pandas as pd
-
+from django.db import transaction
 from apps.marketdata.models import CorporateAction, PriceHistory, Security
 from apps.marketdata.sources import PriceSource, UnknownTickerError
 
 logger = logging.getLogger(__name__)
 
-# The earliest date we'll ask the source for on a fresh ingest.
-# Yahoo Finance reliably reaches back to the early 1990s; using 1990-01-01
-# captures maximum history per spec §6.
-_HISTORY_START = date(1990, 1, 1)
 
+def ingest_security(symbol: str, source: PriceSource, start: Optional[date] = None) -> Security:
+    """Refresh maximum history by default, including retroactive adjustments.
 
-def ingest_security(
-    symbol: str,
-    source: PriceSource,
-    start: Optional[date] = None,
-) -> Security:
-    """
-    Fetch and store market data for *symbol*.
-
-    1. Validate the ticker at the source (raises UnknownTickerError if unknown).
-    2. Get-or-create the Security row.
-    3. Determine the fetch window:
-       - Fresh ingest: from *start* (default _HISTORY_START) to today.
-       - Incremental refresh: from (latest stored date + 1) to today.
-    4. Bulk-upsert PriceHistory rows (update on conflict).
-    5. Upsert CorporateAction rows from the source's ``actions`` data if
-       available.
-
-    Returns the Security instance.
+    Fetch before opening a transaction: a failed source leaves no new rows.
+    PriceSource returns actions in DataFrame.attrs['actions'].
     """
     symbol = symbol.upper().strip()
-
-    # Step 1: validate
     if not source.validate(symbol):
-        raise UnknownTickerError(
-            f"Symbol '{symbol}' could not be validated at the data source."
-        )
-
-    # Step 2: get-or-create the Security row
-    security, created = Security.objects.get_or_create(
-        symbol=symbol,
-        exchange="",  # Yahoo Finance doesn't distinguish exchanges
-        defaults={"asset_type": "stock"},
-    )
-    if created:
-        logger.info("Created new security: %s", symbol)
-
-    # Step 3: determine fetch window
-    today = date.today()
-    if start is None:
-        latest = (
-            PriceHistory.objects.filter(security=security)
-            .order_by("-date")
-            .values_list("date", flat=True)
-            .first()
-        )
-        if latest is not None:
-            fetch_start = latest + timedelta(days=1)
-        else:
-            fetch_start = _HISTORY_START
-    else:
-        fetch_start = start
-
-    if fetch_start > today:
-        logger.info("%s is already up to date (latest: %s)", symbol, fetch_start - timedelta(days=1))
-        return security
-
-    # Step 4: fetch
-    logger.info("Fetching %s from %s to %s", symbol, fetch_start, today)
-    df = source.fetch(symbol, fetch_start, today)
-
+        raise UnknownTickerError(f"Symbol '{symbol}' could not be validated at the data source.")
+    df = source.fetch(symbol, start, date.today())
     if df.empty:
-        logger.warning("No new rows returned for %s", symbol)
-        return security
-
-    _upsert_price_history(security, df)
-
+        raise UnknownTickerError(f"No price history returned for '{symbol}'.")
+    with transaction.atomic():
+        security, _ = Security.objects.get_or_create(symbol=symbol, exchange='', defaults={'asset_type': 'stock'})
+        # Serialize refreshes for this security. Never hold a DB lock during download.
+        security = Security.objects.select_for_update().get(pk=security.pk)
+        old = dict(PriceHistory.objects.filter(security=security, date__in=list(df.index)).values_list('date', 'adj_close'))
+        revised = any(day in old and old[day] != _decimal_or_none(row['adj_close'])
+                      for day, row in df.iterrows())
+        _upsert_price_history(security, df)
+        for action in df.attrs.get('actions', []):
+            CorporateAction.objects.update_or_create(security=security, ex_date=action['ex_date'],
+                action_type=action['action_type'], defaults={'ratio': action['ratio']})
+        if revised:
+            # The locked cache key has no revision field. Expire derived cache,
+            # retaining Analysis inputs/slugs so every report can be recomputed.
+            from apps.analysis.models import AnalysisResult
+            AnalysisResult.objects.all().delete()
+            logger.info('Expired result cache after adjusted-history revision: %s', symbol)
     return security
 
 
@@ -117,8 +56,8 @@ def _upsert_price_history(security: Security, df: pd.DataFrame) -> None:
             open=_decimal_or_none(row.get("open")),
             high=_decimal_or_none(row.get("high")),
             low=_decimal_or_none(row.get("low")),
-            close=row["close"],
-            adj_close=row["adj_close"],
+            close=_decimal_or_none(row["close"]),
+            adj_close=_decimal_or_none(row["adj_close"]),
             volume=_int_or_none(row.get("volume")),
         )
         for idx, row in df.iterrows()
@@ -137,16 +76,17 @@ def _upsert_price_history(security: Security, df: pd.DataFrame) -> None:
 
 
 def _decimal_or_none(value):
-    """Return None if value is NaN/None, otherwise the value itself."""
+    """Return a finite four-decimal SQL price, or None for missing/nonfinite input."""
     if value is None:
         return None
     try:
         import math
-        if math.isnan(float(value)):
+        if not math.isfinite(float(value)):
             return None
     except (TypeError, ValueError):
         return None
-    return value
+    from decimal import Decimal, ROUND_HALF_UP
+    return Decimal(str(value)).quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
 
 
 def _int_or_none(value):

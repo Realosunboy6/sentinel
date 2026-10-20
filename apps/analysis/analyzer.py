@@ -4,7 +4,7 @@ Analysis orchestrator.
 Entry point: analyze(holdings, start_date, end_date, benchmark_symbol)
 
 This module:
-1. Validates / ingests unknown tickers on-demand.
+1. Validates cached tickers; requests never ingest data.
 2. Loads adjusted prices from price_history, builds simple returns.
 3. Canonicalises the input and computes an input_hash.
 4. Checks the AnalysisResult cache.
@@ -21,16 +21,16 @@ import hashlib
 import json
 import logging
 import secrets
-from datetime import date, timedelta
+from datetime import date
+from calendar import monthrange
 from typing import Optional
 
 import pandas as pd
+from django.db import transaction
 
-from apps.analysis.engine import EngineUnavailableError, run_analysis
+from apps.analysis.engine import EngineUnavailableError, run_analysis, engine_version
 from apps.analysis.models import Analysis, AnalysisResult
-from apps.marketdata.ingestion import ingest_security
 from apps.marketdata.models import PriceHistory, Security
-from apps.marketdata.sources import UnknownTickerError, YahooPriceSource
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ class InvalidTickerError(Exception):
 # Public entry point
 # ---------------------------------------------------------------------------
 
+@transaction.atomic
 def analyze(
     holdings: list[dict],
     start_date: Optional[date] = None,
@@ -80,23 +81,25 @@ def analyze(
     if end_date is None:
         end_date = today
     if start_date is None:
-        start_date = date(today.year - DEFAULT_YEARS, today.month, today.day)
+        year = today.year - DEFAULT_YEARS
+        start_date = today.replace(year=year, day=min(today.day, monthrange(year, today.month)[1]))
 
     # Ensure all symbols (including benchmark) are in the DB.
     all_symbols = [h["symbol"] for h in holdings]
     if benchmark_symbol not in all_symbols:
         all_symbols = all_symbols + [benchmark_symbol]
 
-    _ensure_symbols_ingested(all_symbols)
+    _ensure_symbols_cached(all_symbols)
+    # Match refresh locks and serialize identical cache fills on PostgreSQL.
+    list(Security.objects.select_for_update().filter(symbol__in=all_symbols).order_by("pk"))
 
     # Canonicalise and hash.
     canonical = canonicalize(holdings, start_date, end_date, benchmark_symbol)
     h = input_hash(canonical)
 
     # Load prices and find the latest available date.
-    prices_df = load_prices(all_symbols, start_date, end_date)
-    if prices_df.empty:
-        raise ValueError("No price data available for the requested date range.")
+    holdings, prices_df, warnings = prepare_prices(holdings, start_date, end_date, benchmark_symbol)
+    signature = hashlib.sha256(("report-v2:" + canonical + prices_df.to_json(date_format="iso")).encode()).hexdigest()
 
     latest_date = prices_df.index.max()
     if hasattr(latest_date, "date"):
@@ -107,7 +110,7 @@ def analyze(
         input_hash=h, data_asof=latest_date
     ).first()
 
-    if cached is not None:
+    if cached is not None and cached.metrics.get("_input_signature") == signature:
         analysis = Analysis.objects.filter(input_hash=h).order_by("-created_at").first()
         if analysis is None:
             # Cached result exists but the Analysis row was somehow deleted — recreate.
@@ -126,7 +129,11 @@ def analyze(
         benchmark_returns=bench_returns,
     )
 
-    # Store result and analysis.
+    metrics["warnings"] = warnings
+    metrics["effective_holdings"] = holdings
+    metrics["_input_signature"] = signature
+    # Revisions and adapter fixes expire derived results; saved inputs/slugs survive.
+    AnalysisResult.objects.filter(input_hash=h, data_asof=latest_date).delete()
     AnalysisResult.objects.create(
         input_hash=h,
         data_asof=latest_date,
@@ -151,8 +158,11 @@ def canonicalize(
     Produce a stable string representation of the analysis inputs.
     Holdings are sorted by symbol; weights are rounded to 6 dp.
     """
+    total = sum(float(item["weight"]) for item in holdings)
+    if total <= 0:
+        raise ValueError("Portfolio weights must have a positive sum.")
     sorted_holdings = sorted(
-        [{"symbol": h["symbol"], "weight": round(float(h["weight"]), 6)} for h in holdings],
+        [{"symbol": h["symbol"].strip().upper(), "weight": round(float(h["weight"]) / total, 6)} for h in holdings],
         key=lambda x: x["symbol"],
     )
     obj = {
@@ -172,6 +182,7 @@ def load_prices(
     symbols: list[str],
     start_date: date,
     end_date: date,
+    strict: bool = True,
 ) -> pd.DataFrame:
     """
     Query PriceHistory for all symbols, pivot to a wide DataFrame of
@@ -201,8 +212,11 @@ def load_prices(
     wide = wide.ffill(limit=MAX_FFILL_DAYS)
 
     # Drop rows that are still missing any symbol.
-    wide = wide.dropna()
-
+    if strict:
+        complete = wide.dropna()
+        if not complete.empty and wide.loc[complete.index.min():complete.index.max()].isna().any().any():
+            raise ValueError("Cached history has a gap longer than five observations; refresh before analyzing.")
+        wide = complete
     return wide
 
 
@@ -224,28 +238,54 @@ def gen_slug(length: int = 8) -> str:
             return candidate
 
 
-def _ensure_symbols_ingested(symbols: list[str]) -> None:
-    """
-    For each symbol not yet in the securities table, attempt to ingest it.
-    Raises InvalidTickerError if a symbol cannot be resolved.
-    """
-    source = YahooPriceSource()
-    known = set(Security.objects.filter(symbol__in=symbols).values_list("symbol", flat=True))
+def _ensure_symbols_cached(symbols: list[str]) -> None:
+    """Check the local universe, never contact a source."""
+    known = set(Security.objects.filter(symbol__in=symbols).values_list('symbol', flat=True))
     for symbol in symbols:
         if symbol not in known:
-            try:
-                ingest_security(symbol, source)
-            except UnknownTickerError:
-                raise InvalidTickerError(symbol)
+            raise InvalidTickerError(symbol)
+
+
+def prepare_prices(holdings, start, end, benchmark=None):
+    """Exclude unavailable/stale holdings explicitly and disclose renormalization."""
+    symbols = [h['symbol'] for h in holdings]
+    requested = list(dict.fromkeys(symbols + ([benchmark] if benchmark else [])))
+    wide = load_prices(requested, start, end, strict=False)
+    if wide.empty:
+        raise ValueError('Cached price history is unavailable in this date range.')
+    latest = wide.index.max()
+    excluded = []
+    for symbol in symbols:
+        if symbol not in wide or wide[symbol].last_valid_index() is None:
+            excluded.append(symbol)
+        elif pd.isna(wide[symbol].iloc[-1]) or (pd.Timestamp(end) - wide[symbol].last_valid_index()).days > 10:
+            excluded.append(symbol)
+    retained = [h.copy() for h in holdings if h['symbol'] not in excluded]
+    if not retained or sum(h['weight'] for h in retained) <= 0:
+        raise ValueError('No usable holdings remain: ' + ', '.join(excluded) + '. Refresh cached history or choose an earlier end date.')
+    if benchmark and (benchmark not in wide or pd.isna(wide[benchmark].iloc[-1]) or (pd.Timestamp(end) - wide[benchmark].last_valid_index()).days > 10):
+        raise ValueError(f'Benchmark {benchmark} has no recent cached prices for this range.')
+    total = sum(h['weight'] for h in retained)
+    retained = [{**h, 'weight': h['weight'] / total} for h in retained]
+    columns = list(dict.fromkeys([h['symbol'] for h in retained] + ([benchmark] if benchmark else [])))
+    wide = wide[columns]
+    complete = wide.dropna()
+    if len(complete) < 2:
+        raise ValueError('At least two aligned cached prices are needed.')
+    if wide.loc[complete.index.min():complete.index.max()].isna().any().any():
+        raise ValueError('Cached history has a gap longer than five observations; refresh before analyzing.')
+    warnings = []
+    if excluded:
+        warnings.append('Excluded unavailable or stale holdings: ' + ', '.join(excluded) + '. Remaining weights were renormalized to 100%.')
+    complete.attrs['warnings'] = warnings
+    complete.attrs['holdings'] = retained
+    return retained, complete, warnings
 
 
 def _create_analysis(h: str, canonical: str) -> Analysis:
-    import portlab
-    engine_version = getattr(portlab, "__version__", "unknown")
-
     return Analysis.objects.create(
         slug=gen_slug(),
         input_hash=h,
         inputs=json.loads(canonical),
-        engine_version=engine_version,
+        engine_version=engine_version(),
     )

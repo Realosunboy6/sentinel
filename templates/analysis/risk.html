@@ -11,7 +11,7 @@
   .kpi .value { font-size:1.4rem; font-weight:700; font-variant-numeric:tabular-nums; color:#1f2328; }
   .kpi .value.down { color:#dc2626; }
   .kpi .sub { font-size:.75rem; color:#57606a; margin-top:.2rem; }
-  .chart-panel { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:1.25rem; margin-bottom:1.25rem; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .chart-panel { min-width:0; overflow-x:auto; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:1.25rem; margin-bottom:1.25rem; box-shadow:0 1px 3px rgba(0,0,0,.04); }
   .chart-panel h3 { font-size:.875rem; font-weight:600; color:#1f2328; margin:0 0 .75rem; }
   .chart-panel .vintage { font-size:.72rem; color:#57606a; margin-top:.5rem; }
   .echarts-div { width:100%; height:300px; }
@@ -21,7 +21,7 @@
   .risk-table th { font-weight:600; font-size:.75rem; color:#57606a; text-transform:uppercase; background:#f7f8fa; }
   .risk-table td:first-child,.risk-table th:first-child { text-align:left; }
   .up { color:#0e9f6e; } .dn { color:#dc2626; }
-  .cols-2 { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+  .cols-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.25rem; }
   @media (max-width:720px) { .cols-2 { grid-template-columns:1fr; } }
   /* Basel traffic light */
   .tl-green  { background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:6px; padding:.2rem .6rem; font-weight:700; font-size:.8rem; }
@@ -33,10 +33,13 @@
   .regime-bear    { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
   .regime-neutral { background:#f7f8fa; color:#57606a; border:1px solid #e2e8f0; }
   .young-history-note { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:.75rem 1rem; font-size:.85rem; color:#92400e; }
+  .page-head {flex-wrap:wrap;gap:.5rem} .share-bar {flex-wrap:wrap;overflow-wrap:anywhere} .share-bar code {overflow-wrap:anywhere;word-break:break-all}
 </style>
 {% endblock %}
 
 {% block content %}
+{% for warning in risk.warnings %}<p class="flash flash-warn" role="status">{{ warning }}</p>{% endfor %}
+
 <div class="page-head" style="margin-bottom:1rem">
   <h1>RiskLens report</h1>
   <span class="meta">
@@ -47,23 +50,28 @@
   </span>
 </div>
 
+<section class="chart-panel"><h3>Portfolio inputs</h3><form method="post" action="{% url 'risk' %}" data-portfolio-form>
+  {% csrf_token %}{% if analysis %}<input type="hidden" name="slug" value="{{ analysis.slug }}">{% endif %}
+  {% include "analysis/_portfolio_fields.html" %}
+  <button type="submit" class="btn btn-primary">Update RiskLens</button>
+</form></section>
 <!-- ============================================================ -->
 <!-- KPI cards: VaR95, VaR99, ES95, Basel traffic light           -->
 <!-- ============================================================ -->
 <div class="kpi-row">
   <div class="kpi">
     <div class="label">95% VaR (daily)</div>
-    <div class="value">{{ risk.var95|pct:2 }}%</div>
+    <div class="value">{% if risk.var95 is None %}Unavailable{% else %}{{ risk.var95|pct:2 }}%{% endif %}</div>
     <div class="sub">historical, of portfolio value</div>
   </div>
   <div class="kpi">
     <div class="label">99% VaR (daily)</div>
-    <div class="value">{{ risk.var99|pct:2 }}%</div>
+    <div class="value">{% if risk.var99 is None %}Unavailable{% else %}{{ risk.var99|pct:2 }}%{% endif %}</div>
     <div class="sub">historical</div>
   </div>
   <div class="kpi">
     <div class="label">95% Expected shortfall</div>
-    <div class="value">{{ risk.es95|pct:2 }}%</div>
+    <div class="value">{% if risk.es95 is None %}Unavailable{% else %}{{ risk.es95|pct:2 }}%{% endif %}</div><div class="sub">ES99: {% if risk.es99 is None %}Unavailable{% else %}{{ risk.es99|pct:2 }}%{% endif %}</div>
     <div class="sub">average loss beyond VaR</div>
   </div>
   <div class="kpi">
@@ -84,7 +92,7 @@
 <!-- Signature visual: return distribution histogram + VaR lines  -->
 <!-- ============================================================ -->
 <div class="chart-panel">
-  <h3>Daily return distribution</h3>
+  <h3>Daily return distribution</h3>{% if risk.var95 is None %}<p class="young-history-note">VaR and ES estimates need at least two daily returns. The observed return is shown below.</p>{% endif %}
   <div class="echarts-div" id="chart-histogram" style="height:320px"></div>
   <p style="color:#57606a;font-size:.8rem;margin-top:.5rem">
     Red bars = returns worse than 95% VaR.
@@ -104,7 +112,7 @@
     <div class="vintage">{{ asof }}</div>
   </div>
   <div class="chart-panel">
-    <h3>Regime</h3>
+    <h3>Regime</h3>{% if risk.regime.full_var95 is None %}<p>Regime estimates are unavailable for this history.</p>{% endif %}
     <p style="margin-bottom:.75rem;font-size:.875rem">
       Current regime:
       <span class="regime-badge {% if risk.regime.current == 'Calm' %}regime-bull{% elif risk.regime.current == 'Stressed' %}regime-bear{% else %}regime-neutral{% endif %}">
@@ -170,7 +178,7 @@
   <h3>VaR methods comparison</h3>
   <table class="risk-table">
     <thead>
-      <tr><th>Method</th><th>VaR 95%</th><th>VaR 99%</th><th>ES 95%</th></tr>
+      <tr><th>Method</th><th>VaR 95%</th><th>VaR 99%</th><th>ES 95%</th><th>ES 99%</th></tr>
     </thead>
     <tbody>
       {% for row in risk.var_table %}
@@ -178,7 +186,7 @@
         <td>{{ row.method }}</td>
         <td>{% if row.var95 is None %}Unavailable{% else %}{{ row.var95|pct:3 }}%{% endif %}</td>
         <td>{% if row.var99 is None %}Unavailable{% else %}{{ row.var99|pct:3 }}%{% endif %}</td>
-        <td>{% if row.es95 %}{{ row.es95|pct:3 }}%{% else %}—{% endif %}</td>
+        <td>{% if row.es95 is not None %}{{ row.es95|pct:3 }}%{% else %}Unavailable{% endif %}</td><td>{% if row.es99 is not None %}{{ row.es99|pct:3 }}%{% else %}Unavailable{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -245,6 +253,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+{% include "analysis/_portfolio_scripts.html" %}
 {% load static %}
 <script src="{% static 'echarts.min.js' %}"></script>
 <script>

@@ -2,7 +2,7 @@
 from calendar import monthrange
 from datetime import date
 
-from .analyzer import load_prices, make_returns
+from .analyzer import prepare_prices, make_returns
 from .engine import OptimizationInputError, run_optimization, run_rolling_optimization
 from .models import Analysis
 from .charts import optimization_charts, rolling_weights_chart
@@ -25,22 +25,24 @@ def load_optimization_portfolio(slug):
 
 def load_optimization_inputs(holdings, start, end):
     """Load temporary tool inputs without saving or mutating an analysis."""
-    symbols = [h["symbol"] for h in holdings]
-    prices = load_prices(symbols, start, end)
-    missing = set(symbols) - set(prices.columns)
-    if prices.empty or missing:
-        raise OptimizationInputError("Cached price history is unavailable for: " + ", ".join(sorted(missing or set(symbols))))
-    returns = make_returns(prices[symbols])
-    current = {h["symbol"]: h["weight"] for h in holdings}
+    try:
+        holdings, prices, warnings = prepare_prices(holdings, start, end)
+    except ValueError as exc:
+        raise OptimizationInputError(str(exc)) from exc
+    returns = make_returns(prices)
+    returns.attrs['warnings'] = warnings
+    current = {h['symbol']: h['weight'] for h in holdings}
     return returns, current
 
 
 def optimize_portfolio(returns, current, **options):
     report = run_optimization(returns, current, **options)
+    report["warnings"] = returns.attrs.get("warnings", [])
     return report, optimization_charts(report)
 
 
 def rolling_portfolio(returns, current, **options):
     report = run_rolling_optimization(returns, current, **options)
+    report["warnings"] = returns.attrs.get("warnings", [])
     charts = {} if report["young_history"] else {"rolling": rolling_weights_chart(report)}
     return report, charts

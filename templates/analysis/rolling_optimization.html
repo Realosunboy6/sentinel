@@ -6,6 +6,7 @@
 <div class="optimization-head"><h1>{{ page_title }}</h1><span class="optimization-meta">Allocations estimated from prior observations only</span></div>
 {% include "analysis/_optimization_input.html" %}
 {% if report %}
+{% for warning in report.warnings %}<p class="note" role="status">{{ warning }}</p>{% endfor %}
   {% if report.young_history %}<div class="note">{{ report.message }}</div>
   {% else %}
   <section class="panel">
