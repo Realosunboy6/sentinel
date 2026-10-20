@@ -26,9 +26,12 @@ with a signature interactive chart for every tool.
 
 ### Hard constraints (LOCKED)
 
-1. **No login, no accounts, no brokerage connection, no user money, ever.**
-   There is no `users` table and there must never be one. The input is
-   tickers + weights only. Do not build auth "for later."
+1. **No visitor login, visitor accounts, brokerage connection, or user money.**
+   Public input is tickers + weights only. No visitor identity, portfolio
+   ownership, registration, or customer-auth tables may be added. **Owner
+   clarification, 2026-10-19:** retain Django's staff-only admin and its
+   framework-owned authentication tables for securities/preset curation.
+   This exception does not authorize public accounts or auth "for later."
 2. **Every tool ships with at least one signature interactive visual**
    (matrix in §8). A tool that renders only numbers is not done.
 3. **Real market data only.** No synthetic series in production paths.
@@ -50,7 +53,7 @@ with a signature interactive chart for every tool.
 
 ## 2. Stack (DEFAULT)
 
-- **Framework: Django 5 (Python 3.12)**: one monolith: server-rendered
+- **Framework: Django 5.2 (Python 3.12)**: one monolith: server-rendered
   pages (templates), Django ORM over the schema in §6, Django migrations
   generated from `sentinel-schema.sql`, built-in admin for `presets` and
   `securities` curation. Rationale: the schema is relational and already
@@ -210,14 +213,18 @@ structure: `securities`, `price_history`, `corporate_actions`,
 - Presets (DEFAULT): DB rows (schema already provides the table);
   seed with `60-40` (SPY/BND 60/40) and `k5-sample` (MCK/LLY/PWR/NVDA/
   STX at the K5 weights).
-- Ingestion: a security row is created on first request for an unknown
-  ticker (validate it exists at the source *before* creating; unknown
-  tickers get a clean error, never a row). Nightly job refreshes every
-  tracked security: new `price_history` rows (adjusted + raw OHLCV)
-  and `corporate_actions` (splits/dividends). Adjusted close is what
-  returns are built from.
-- The results cache is keyed `(input_hash, data_asof)`; a nightly
-  refresh simply makes new keys; old rows are never mutated.
+- Ingestion (2026-10-19 repair clarification): the refresh job validates
+  and downloads unknown tickers before creating rows. Requests never call
+  the source; missing cached symbols receive an inline explanation. The
+  job refreshes all tracked securities plus explicitly requested symbols,
+  reconciles maximum `price_history` (adjusted + raw OHLCV), and upserts
+  `corporate_actions` (splits/dividends). Adjusted close builds returns.
+- The results cache remains keyed `(input_hash, data_asof)`. Appended days
+  produce new keys. A historical adjusted-price correction expires derived
+  cache rows, retaining analyses/inputs/slugs. Cache hits verify the actual
+  price fingerprint stored in metrics JSON, since the latest date alone
+  cannot identify a retroactive revision. Results are recomputed, never
+  patched to match a desired numerical value.
 
 ## 7. Pages and routes
 
@@ -335,8 +342,9 @@ vintage label shows the stale date).
 - **M1: Analyzer core.** Input form + validation, engine adapter,
   results cache, Analyzer page with all §7 sections and interactive
   charts, share links `/a/<slug>`, presets seeded. *Gate: golden test:
-  the K5 preset reproduces `snippets/metrics.json` values within
-  tolerance; SPY anchors (§5.6) pass.*
+  the K5 preset reproduces the committed `tests/fixtures/k5_golden.json`
+  record within tolerance; SPY anchors (§5.6) pass. The design snippet
+  is illustrative (repository-recorded ruling 2026-10-16).*
 - **M2: RiskLens + backtests.** `/risk` complete: VaR/ES family,
   histogram + VaR line, traffic light, Kupiec/Christoffersen/joint
   (nullable-exceptions handling per §5.3), tail diagnostics, regime,
@@ -363,9 +371,10 @@ vintage label shows the stale date).
 - Adapter unit tests: every engine call in §5's map exercised against
   portlab directly on fixed real-data fixtures (prices CSV in
   `tests/fixtures/`), tolerances stated per test.
-- Golden numbers: `docs/design/snippets/metrics.json` (mock dataset)
-  and the SPY anchors (§5.6) as regression tests: a red golden test
-  means the build changed a number, which is a stop-and-report event.
+- Golden numbers: `tests/fixtures/k5_golden.json` on the committed real
+  K5 prices, and the SPY anchors (§5.6), are the regression gates. The
+  design `docs/design/snippets/metrics.json` is illustrative. A red golden
+  test remains a stop-and-report event; never edit expectations to silence it.
 - Page smoke tests: every route in §7/§8 returns 200 with its chart
   payload present, for the K5 preset.
 - No test may assert a number nobody can re-derive: every expected
@@ -384,7 +393,8 @@ vintage label shows the stale date).
    <ibrahimoyeyinka@yahoo.com>`, small and descriptive.
 5. **Never push without the owner's explicit "Push"** in that moment.
    A timed-out or ambiguous approval is a no.
-6. **Never** add login/accounts/brokerage features, never commit
+6. **Never** add visitor login/accounts/brokerage features (staff-only
+   Django admin is the owner-approved exception), never commit
    portlab source, never put synthetic data in a production path,
    never silence a failing golden test by editing the expected value.
 7. When a spec item and the code disagree, stop and ask; do not

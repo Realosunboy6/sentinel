@@ -1,5 +1,7 @@
 # M2: RiskLens + VaR Backtests — Plan
 
+> **2026-10-19 repair follow-up:** use [repair acceptance](docs/repair-acceptance.md) for current evidence and [outline review](docs/plan-outline-review.md) for the original discrepancies. Numerical gates and full acceptance are reported separately. Owner review before M4 remains open.
+
 ## Top-Level Overview
 
 **Goal:** Deliver the `/risk` page — a complete RiskLens report for the current analysis —
@@ -31,7 +33,7 @@ traffic light, regime-conditional VaR, tail diagnostics, and young-history state
 **Expected Outcomes**
 - `run_risklens(port_returns, tail_alpha=0.05) -> dict` exported from `engine.py`.
 - Returns a dict with these keys:
-  - `var_table`: list of dicts — one row per VaR method — each `{method, var95, var99, es95}`.
+  - `var_table`: list of dicts — one row per VaR method — each `{method, var95, var99, es95, es99}`.
     Methods: historical, parametric, parametric_t, cornish_fisher, garch.
   - `backtest`: `{n_scored, n_exceptions, kupiec_lr, kupiec_p, kupiec_reject,
       chris_n00, chris_n01, chris_n10, chris_n11, chris_lr, chris_p,
@@ -97,14 +99,13 @@ Add two new serializers to `apps/analysis/charts.py`:
 
 **Intent**
 Build the `/risk` page end-to-end. It is reached via `GET /risk?slug=<slug>` — the slug
-identifies the analysis whose portfolio is being examined. The Risk page is a read-only
-report; it loads the stored `AnalysisResult`, re-runs `run_risklens()` on the portfolio
+identifies the analysis whose portfolio is being examined. The saved report remains shareable; its shared portfolio editor can create a new analysis. It it loads the stored `AnalysisResult`, re-runs `run_risklens()` on the portfolio
 returns derived from `price_history`, and renders all sections.
 
 **Expected Outcomes**
 - `GET /risk?slug=<slug>` → 200 with all Risk page sections rendered.
 - Sections in mockup order (spec §7 / `risk.html`):
-  1. KPI cards: VaR95, VaR99, ES95, Basel traffic light zone.
+  1. KPI cards: VaR95, VaR99, ES95/ES99, Basel traffic light zone, plus the shared editable input.
   2. Return histogram + VaR95/99 lines (signature visual).
   3. Two-column: Drawdown area | Regime panel (current regime badge + calm/stressed table).
   4. Two-column: Tail diagnostics table | Stress scenarios table (from `run_risklens()`).

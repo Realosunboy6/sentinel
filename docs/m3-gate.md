@@ -1,5 +1,7 @@
 # M3 gate: optimizer
 
+> **Repair follow-up (2026-10-19):** the findings below describe the pre-repair state. See [current acceptance evidence](repair-acceptance.md) for fixes, regression tests and remaining limits.
+
 **Acceptance follow-up (2026-10-19):** the missing shared editable portfolio
 form, engine-error references, and visual-review follow-ups are now implemented
 and checked. M3 is ready for owner review. PostgreSQL/Python 3.12 coverage and

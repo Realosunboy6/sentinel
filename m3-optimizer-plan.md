@@ -1,5 +1,7 @@
 # M3: Optimizer
 
+> **2026-10-19 repair follow-up:** use [repair acceptance](docs/repair-acceptance.md) for current evidence and [outline review](docs/plan-outline-review.md) for the original discrepancies. Numerical gates and full acceptance are reported separately. Owner review before M4 remains open.
+
 Authorized by the owner's 2026-10-18 instruction: "push AND START M3".
 M2 commit 7b560aa was pushed and verified on GitHub before starting.
 

@@ -13,7 +13,7 @@ fixed regression anchors.
 - **Source:** Yahoo Finance via `yfinance.download(..., auto_adjust=False)`
 - **Download date:** 2026-10-16
 - **Use:** Golden-number regression test (`tests/test_golden.py`) against
-  `docs/design/snippets/metrics.json`
+  `tests/fixtures/k5_golden.json` (repository-recorded ruling 2026-10-16; the design snippet is illustrative)
 
 ### spy_prices.csv
 - **Ticker:** SPY

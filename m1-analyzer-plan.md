@@ -1,5 +1,7 @@
 # M1: Analyzer Core — Plan
 
+> **2026-10-19 repair follow-up:** use [repair acceptance](docs/repair-acceptance.md) for current evidence and [outline review](docs/plan-outline-review.md) for the original discrepancies. Numerical gates and full acceptance are reported separately. Owner review before M4 remains open.
+
 ## Owner Rulings (confirmed before implementation)
 
 1. **Frontier in M1.** Spec §7 lists the Analyzer results sections ending with "efficient frontier
@@ -29,11 +31,11 @@ engine, including the results cache, share links (`/a/<slug>`), presets, and the
 - `apps/analysis/analyzer.py` — orchestration: load prices → canonicalize → cache → engine → serialize
 - `apps/analysis/forms.py` — portfolio input form with all §7 validation rules
 - `apps/analysis/charts.py` — chart payload serializers (§9 envelope)
-- Views, templates, URLs for `/`, `/analyze`, `/a/<slug>`, `/api/tickers`
+- Views, templates, URLs for `/`, `/analyze`, `/a/<slug>`, `/api/tickers`, `/api/analyze`
 - `tests/fixtures/k5_prices.csv`, `tests/fixtures/spy_prices.csv` — committed price fixtures
 - Golden-number regression tests + SPY anchor tests
 
-**Gate:** `pytest` exits 0; golden test reproduces `metrics.json` within tolerance; SPY backtest
+**Gate:** `pytest` exits 0; golden test reproduces the committed `tests/fixtures/k5_golden.json` within tolerance (repository-recorded 2026-10-16 ruling; design `metrics.json` is illustrative); SPY backtest
 anchors (§5.6) pass; `/analyze` and `/a/<slug>` return 200 with chart payloads for the K5 preset.
 
 **Out of scope for M1:** `/risk` full page (M2), `/optimize` page (M3), tool pages (M4).
@@ -68,7 +70,7 @@ Single module that calls portlab. Owns the alpha-duality boundary (spec §5.1). 
 1. Write `apps/analysis/engine.py`.
 2. Add `EngineUnavailableError` to `apps/analysis/__init__.py`.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -82,9 +84,8 @@ engine on miss, store result, return metrics.
 - `analyze(holdings, start_date, end_date, benchmark_symbol) -> tuple[Analysis, dict]`
 - `load_prices(symbols, start_date, end_date) -> pd.DataFrame` — query `PriceHistory.adj_close`,
   pivot to wide DataFrame, forward-fill up to 5 days (handle holidays), align all columns.
-- Unknown ticker: call `ingest_security(symbol, YahooPriceSource())` on-demand before querying;
-  raise `InvalidTickerError(symbol)` if `UnknownTickerError` is caught.
-- `canonicalize(holdings) -> str` — sort by symbol, round weights to 6 dp, `json.dumps`.
+- Unknown ticker: raise an inline cached-data error; requests never call the source. The earlier on-demand detail is superseded by the locked cache-only requirement.
+- `canonicalize(holdings) -> str` — normalize weights, sort by symbol, round to 6 dp, then `json.dumps`.
 - `input_hash(canonical) -> str` — `hashlib.sha256(canonical.encode()).hexdigest()`.
 - Cache hit: `AnalysisResult.objects.filter(input_hash=..., data_asof=latest_date).first()`.
 - Cache miss: call `engine.run_analysis(...)`, write `AnalysisResult`, create `Analysis` with slug.
@@ -96,7 +97,7 @@ engine on miss, store result, return metrics.
 1. Write `apps/analysis/analyzer.py`.
 2. Add `InvalidTickerError` to `apps/analysis/__init__.py`.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -108,8 +109,7 @@ Matches the `dashboard.html` mockup layout.
 
 **Expected Outcomes**
 - `PortfolioInputForm` validates: 1–25 holdings; weights ≥ 0; sum 100 ± 0.5 (show actual sum in
-  error); duplicates merged with notice; tickers resolve (check `securities` table first, then
-  live `source.validate()`); start date; benchmark symbol.
+  error); duplicates merged with notice; tickers resolve from the cache (unknown symbols require a separate refresh job); start date; benchmark symbol.
 - Normalize action: POST `action=normalize` reweights to exactly 100%, re-renders form.
 - Preset buttons: `GET /analyze?preset=k5-sample` → loads from `Preset` DB row → fills form.
 - `GET /api/tickers?q=<prefix>` → JSON `[{"symbol": ..., "name": ...}]` from `securities` table
@@ -122,7 +122,7 @@ Matches the `dashboard.html` mockup layout.
 2. Write `apps/analysis/views.py` stub with `tickers_autocomplete` view.
 3. Write `templates/analysis/partials/portfolio_form.html`.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -148,7 +148,7 @@ Convert engine output to §9-envelope JSON payloads. Vendor `echarts.min.js`.
 1. Write `apps/analysis/charts.py`.
 2. Download `echarts.min.js` from the Apache ECharts CDN and save to `static/echarts.min.js`.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -161,8 +161,7 @@ Wire everything end-to-end. PRG pattern on form submit. Share links. Landing pag
 - `GET /analyze` → form (empty or preset-prefilled).
 - `POST /analyze` → validate → run → **redirect** to `/a/<slug>` (PRG).
 - `GET /a/<slug>` → load `Analysis` + `AnalysisResult`, render full results (read-only banner).
-- `GET /` → landing page; hero chart = cached K5 result if it exists, else static SVG from
-  `docs/design/index.html` (never a 500, never fabricated data).
+- `GET /` → landing page; hero chart = cached K5 result if it exists, else a truthful unavailable state; no static design numbers are presented as current performance.
 - Engine down → `engine_unavailable.html` — clean error page, no traceback.
 - "Share" button shows `/a/<slug>` with the disclaimer from spec §10.
 - Results sections in mockup order (spec §7): KPI cards → growth chart → drawdown → performance
@@ -181,7 +180,7 @@ Wire everything end-to-end. PRG pattern on form submit. Share links. Landing pag
 7. Update `sentinel/urls.py` with all M1 routes.
 8. Update `templates/base.html` nav.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -199,7 +198,7 @@ report — never edit the expected value.
   column names, and the stop-and-report rule.
 - `tests/test_golden.py` — calls `engine.run_analysis()` on the K5 fixture:
   - Portfolio CAGR, vol, Sharpe, Sortino, max DD, end value: `pytest.approx(x, rel=1e-4)`
-    — source: `docs/design/snippets/metrics.json`
+    — source: `tests/fixtures/k5_golden.json`
   - Per-asset (MCK/LLY/PWR/NVDA/STX) same fields: `rel=1e-3`
   - Annual returns 2021–2026: `rel=1e-4`
   - var95, var99, es95: `rel=1e-4`
@@ -217,7 +216,7 @@ report — never edit the expected value.
 4. Write `tests/test_spy_anchors.py`.
 5. Run both; investigate any mismatch in the adapter before touching expected values.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -230,7 +229,7 @@ report — never edit the expected value.
 - `pytest` exits 0 across all M0 + M1 tests.
 - `README.md` updated: M1 ✅.
 
-**Status:** [x] done
+**Status:** [x] implemented; corrected behavior and scoped evidence in repair acceptance
 
 ---
 
@@ -243,3 +242,5 @@ report — never edit the expected value.
 - Commit format: `M1.N: <description>` — e.g. `M1.1: portlab engine adapter`.
 - Author: `Ibrahim Oyeyinka <ibrahimoyeyinka@yahoo.com>`.
 - Do not push until the owner says "Push".
+
+The earlier owner-rulings paragraph allowing a static landing fallback is retained as history; the repair follows the locked real-data rule and interactive visual contract. Cache corrections, availability states and data provenance are included in the repair gate.

@@ -1,5 +1,7 @@
 # M0: Scaffold + Data Layer — Plan
 
+> **2026-10-19 repair follow-up:** use [repair acceptance](docs/repair-acceptance.md) for current evidence and [outline review](docs/plan-outline-review.md) for the original discrepancies. Numerical gates and full acceptance are reported separately. Owner review before M4 remains open.
+
 ## Owner Decisions (confirmed before implementation)
 
 1. **Docker Compose:** include a `docker-compose.yml` for local PostgreSQL 15. The app reads `DATABASE_URL` from the environment in all environments; no hardcoded credentials anywhere.
@@ -10,7 +12,7 @@
 
 **Goal:** Stand up the complete skeleton of the Sentinel repository so that every
 subsequent milestone has a stable surface to build on.  
-**Scope:** Repository layout (§4), Django 5 project, PostgreSQL schema migrated from
+**Scope:** Repository layout (§4), Django 5.2 project, PostgreSQL schema migrated from
 `sentinel-schema.sql`, a `PriceSource` abstraction with a Yahoo Finance implementation,
 a nightly `refresh_prices` management command that seeds and refreshes the 12-ticker
 universe, Django admin for `securities` and `presets`, and a single internal page that
@@ -25,7 +27,7 @@ links, any tool page. Those belong to M1+.
 ## Sub-Task 1 — Repository skeleton and Django project
 
 **Intent**  
-Create the exact directory tree specified in §4 and bootstrap the Django 5 project
+Create the exact directory tree specified in §4 and bootstrap the Django 5.2 project
 (`sentinel/` project package, `apps/` sub-packages, `templates/`, `static/`). This
 gives every later sub-task a clean place to drop files.
 
@@ -35,7 +37,7 @@ gives every later sub-task a clean place to drop files.
   `pandas`, `numpy`, `scipy`, `portlab[opt]==0.2.2`, `pytest`, `pytest-django`.
 - The four app packages (`core`, `marketdata`, `analysis`, `tools`) are registered
   in `INSTALLED_APPS` but contain only empty views/urls for now.
-- `static/styles.css` is the verbatim copy from `docs/design/styles.css`.
+- `static/styles.css` preserves the design base, with shared editor/responsive additions; the reference file remains unchanged.
 - `static/echarts.min.js` placeholder comment in place (actual vendored file can be
   dropped in later).
 - `docker-compose.yml` at the repo root starts a `postgres:15` service; `DATABASE_URL`
@@ -62,7 +64,7 @@ gives every later sub-task a clean place to drop files.
 - Spec §2 (stack: Django 5, Python 3.12, PostgreSQL 15+)
 - `docs/design/styles.css` — base stylesheet to copy verbatim
 
-**Status:** [ ] pending
+**Status:** [x] implemented and locally tested; see repair acceptance for environment/live-data gate
 
 ---
 
@@ -81,7 +83,7 @@ specifies.
 - `apps/analysis/models.py` contains `Analysis`, `AnalysisResult`, `Preset`.
 - `python manage.py migrate` runs cleanly against a local PostgreSQL 15+ database.
 - `python manage.py dbshell` → `\dt` shows all six tables.
-- No `users` table exists anywhere in the migration history.
+- No visitor-account or portfolio-ownership models are introduced. Owner clarification (2026-10-19): retain staff-only Django admin and its framework auth tables; the no-accounts rule applies to visitors.
 
 **Todo List**
 1. Write `apps/marketdata/models.py`:
@@ -110,7 +112,7 @@ specifies.
 - Spec §6 — LOCKED schema rules (NUMERIC not float, no identity columns on analyses,
   slug = short base62 token).
 
-**Status:** [ ] pending
+**Status:** [x] implemented and locally tested; see repair acceptance for environment/live-data gate
 
 ---
 
@@ -151,7 +153,7 @@ fetch-OHLCV.
 - Spec §6 (data source: Yahoo Finance behind a `PriceSource` interface, one impl in v1).
 - Spec §10 (unknown ticker → clean error, nothing stored).
 
-**Status:** [ ] pending
+**Status:** [x] implemented and locally tested; see repair acceptance for environment/live-data gate
 
 ---
 
@@ -196,7 +198,7 @@ accepts a `--symbols` flag so M0 can seed the 12-ticker universe.
 - Spec §3 (nightly job = management command `refresh_prices`).
 - Sub-Task 3 (source interface and `UnknownTickerError` defined there).
 
-**Status:** [ ] pending
+**Status:** [x] implemented and locally tested; see repair acceptance for environment/live-data gate
 
 ---
 
@@ -240,7 +242,7 @@ met) that shows each security's symbol, latest price date, and row count.
 - Spec §12 M0 gate: "a page lists securities with price counts and latest dates."
 - `docs/design/styles.css`, `docs/design/index.html` — chrome reference for `base.html`.
 
-**Status:** [ ] pending
+**Status:** [x] implemented and locally tested; see repair acceptance for environment/live-data gate
 
 ---
 
@@ -271,7 +273,7 @@ page loads.
 - Spec §12 M0 gate: "`pytest` green; a page lists securities with price counts and
   latest dates."
 
-**Status:** [ ] pending
+**Status:** [x] implemented and locally tested; see repair acceptance for environment/live-data gate
 
 ---
 

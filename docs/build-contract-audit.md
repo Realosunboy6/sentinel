@@ -1,5 +1,7 @@
 # Build-contract review, 2026-10-18
 
+> **Repair follow-up (2026-10-19):** the findings below describe the pre-repair state. See [current acceptance evidence](repair-acceptance.md) for fixes, regression tests and remaining limits.
+
 ## Follow-up, 2026-10-19
 
 The implementation gaps identified below have been addressed:

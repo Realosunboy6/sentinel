@@ -1,5 +1,7 @@
 # M2 gate: RiskLens
 
+> **Repair follow-up (2026-10-19):** the findings below describe the pre-repair state. See [current acceptance evidence](repair-acceptance.md) for fixes, regression tests and remaining limits.
+
 **Acceptance note (2026-10-18):** the numerical gate below passed. A later
 contract review found a missing deepest-point annotation required by section 9.
 That follow-up was fixed and verified on 2026-10-19. See

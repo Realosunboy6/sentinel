@@ -1,6 +1,6 @@
 # Sentinel
 
-Open-source portfolio analytics web app — optimization, backtesting and risk monitoring (Portfolio Visualizer-class), powered by the [portlab](https://github.com/Realosunboy6/portlab) engine. Built with Django 5.
+Open-source portfolio analytics web app — optimization, backtesting and risk monitoring (Portfolio Visualizer-class), powered by the [portlab](https://github.com/Realosunboy6/portlab) engine. Built with Django 5.2 (composite primary keys).
 
 ---
 
@@ -8,7 +8,7 @@ Open-source portfolio analytics web app — optimization, backtesting and risk m
 
 | Tool | Version |
 |---|---|
-| Python | 3.12+ |
+| Python | 3.12 (verified); 3.14 also tested |
 | PostgreSQL | 15+ (or Docker) |
 | pip | latest |
 
@@ -28,8 +28,8 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and set SECRET_KEY to a long random string.
-# DATABASE_URL defaults to the Docker Compose Postgres — change if needed.
+# Edit .env: set SECRET_KEY and POSTGRES_PASSWORD.
+# Set the same password in DATABASE_URL; URL-encode special characters.
 ```
 
 ### 3. Start PostgreSQL
@@ -101,7 +101,7 @@ export SECRET_KEY=dev-only-secret
 pytest
 ```
 
-Expected: **144 tests, all green** (M0 through M3, including acceptance follow-ups).
+Expected: **167 tests: all pass on PostgreSQL; SQLite skips one production row-lock test** (M0 through M3, including acceptance follow-ups).
 
 PowerShell equivalent:
 
@@ -144,7 +144,7 @@ sentinel/
   templates/                    ← base.html + per-app templates
   static/                       ← styles.css, echarts.min.js (M1)
   docs/design/                  ← design package (mockups, schema, snippets)
-  scripts/                      ← nightly job wrapper (M5)
+  scripts/                      ← nightly wrapper and PostgreSQL schema verifier
   tests/
 ```
 
@@ -154,16 +154,17 @@ sentinel/
 
 | # | Gate |
 |---|---|
-| **M0** ✅ | `pytest` green; securities list page works |
-| **M1** ✅ | Analyzer + golden tests + SPY anchors; 87 tests pass |
-| **M2** Gate passed | RiskLens + web SPY anchors; deepest-drawdown annotation verified |
-| **M3** Ready for review | Optimizer + shared portfolio editor + tool pages; 144 tests pass |
+| **M0** Local repair gate | Corrected ingestion/actions/schema; see repair acceptance report |
+| **M1** Local repair gate | Corrected Analyzer/cache/JSON API/charts; goldens unchanged |
+| **M2** Local repair gate | RiskLens + web anchors + shared editor + ES99 |
+| **M3** Ready for review | Optimizer/risk-parity/rolling; shared data fixes; 167 tests pass |
 | M4 | All 19 tool pages |
 | M5 | Hardening + deploy |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
 M3 validation and calculation conventions: [gate report](docs/m3-gate.md).
-Acceptance corrections and remaining contract gaps: [build-contract review](docs/build-contract-audit.md).
+Current repair evidence and remaining limits: [repair acceptance](docs/repair-acceptance.md).
+Earlier findings: [build-contract review](docs/build-contract-audit.md), [outline review](docs/plan-outline-review.md).
 
 ---
 
@@ -174,3 +175,37 @@ All commits in this repo are authored:
 ```
 Ibrahim Oyeyinka <ibrahimoyeyinka@yahoo.com>
 ```
+
+## Corrected data and cache behavior
+
+Requests use cached prices only. Unknown symbols show an inline instruction to
+refresh history; they are not downloaded during a request. The refresh command
+processes all tracked symbols plus `--symbols`, reconciles maximum available
+adjusted history and upserts splits/dividends atomically. Corrected prices expire
+derived results while retaining share links and their inputs. Cache hits also
+verify the actual loaded price fingerprint, preventing same-date stale results.
+
+Stale or unavailable holdings are explicitly listed before results, and remaining
+weights are renormalized. Long interior gaps block the analysis rather than being
+compressed into misleading daily returns. A stale benchmark blocks the request.
+For an intentionally historical dataset, choose an end date within its history.
+
+`POST /api/analyze` accepts JSON with `holdings` (weights in **percent**, as in the
+form), `benchmark`, `start_date`, and `end_date`; it returns metrics, chart payloads
+and a share URL. Standard Django CSRF protection applies. For example:
+
+```json
+{"holdings":[{"symbol":"SPY","weight":100}],"benchmark":"SPY","start_date":"2021-01-04","end_date":"2026-10-16"}
+```
+
+After applying migrations to an isolated PostgreSQL verification database,
+`python scripts/verify_postgres_schema.py` compares all six business tables with
+the locked SQL in a temporary reference schema. Original migrations are preserved;
+the new upgrade migrations retain existing prices, actions, presets and slugs.
+Back up an existing database before applying schema changes outside a test copy.
+
+## Accounts and administration
+
+Visitors never sign up or log in, and no visitor identity or portfolio-ownership
+models exist. Per the owner's 2026-10-19 clarification, Django's staff-only admin
+and its framework authentication tables remain for securities/preset curation.
