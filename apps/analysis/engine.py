@@ -44,6 +44,465 @@ class OptimizationInputError(ValueError):
     """An input or insufficient history prevents a requested optimization."""
 
 
+def run_tool_report(code, returns, prices, weights, benchmark, options):
+    """Dispatch one M4 report against cached history and the pinned engine.
+
+    Every imported portlab module remains behind this adapter boundary.
+    The report shape is intentionally plain JSON for server-rendered ECharts.
+    """
+    try:
+        import portlab.backtest as pl_backtest
+        import portlab.metrics as pl_metrics
+        import portlab.montecarlo as pl_mc
+        import portlab.covariance as pl_cov
+    except ImportError as exc:
+        raise EngineUnavailableError("portlab[opt]==0.2.2 is required for tool reports.") from exc
+
+    symbols = list(weights)
+    asset_returns = returns[symbols]
+    portfolio = asset_returns.mul(pd.Series(weights)).sum(axis=1)
+    min_returns = {"backtest": 30, "correlations": 3, "drawdowns": 2,
+                   "factors": 30, "alm": 30, "stress": 20,
+                   "attribution": 2, "tax": 2}.get(code, 1)
+    if len(portfolio) < min_returns:
+        raise OptimizationInputError(
+            f"{code.replace('-', ' ').title()} needs at least {min_returns} aligned daily returns; "
+            "choose a longer cached date range.")
+    if not np.isfinite(asset_returns.to_numpy(dtype=float)).all():
+        raise OptimizationInputError("Cached asset returns contain non-finite values.")
+    labels = [str(day.date()) for day in portfolio.index]
+    asof = labels[-1]
+    navy, green, red = "#10233f", "#0e9f6e", "#dc2626"
+
+    def line(title, series, y_label="Value"):
+        return {"title": title, "option": {"tooltip": {"trigger": "axis"},
+            "legend": {"type": "scroll"}, "grid": {"left": 68, "right": 25, "top": 38, "bottom": 62},
+            "xAxis": {"type": "category", "data": labels, "axisLabel": {"hideOverlap": True}},
+            "yAxis": {"type": "value", "name": y_label, "scale": True},
+            "dataZoom": [{"type": "inside"}, {"type": "slider", "height": 15}],
+            "series": [{"name": name, "type": "line", "showSymbol": False,
+                        "lineStyle": {"width": 2, "color": color},
+                        "data": [None if pd.isna(v) else round(float(v), 6) for v in values]}
+                       for name, values, color in series]}}
+
+    def report(title, caption, charts, columns, rows, notes=()):
+        return _json_finite({"title": title, "caption": caption, "charts": charts,
+                             "columns": columns, "rows": rows, "notes": list(notes), "asof": asof})
+
+    if code == "backtest":
+        result = pl_backtest.backtest_portfolio(asset_returns, weights,
+                                                 benchmark=benchmark, initial=10000,
+                                                 rebalance=options.get("rebalance", "annually"))
+        balance = result.balance
+        bench_balance = 10000 * (1 + benchmark.reindex(balance.index).fillna(0)).cumprod()
+        dd = pl_metrics.drawdown_series(result.returns)
+        monthly = result.returns.resample("ME").apply(lambda x: (1 + x).prod() - 1)
+        growth = line("Growth of $10,000", [("Portfolio", balance, navy),
+                                              ("Benchmark", bench_balance, "#94a3b8")], "$ value")
+        growth["option"]["xAxis"]["data"] = [str(d.date()) for d in balance.index]
+        drawdown = line("Drawdown", [("Portfolio", dd, red)], "Drawdown")
+        drawdown["option"]["xAxis"]["data"] = [str(d.date()) for d in dd.index]
+        years = sorted({str(d.year) for d in monthly.index})
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        heat = [[d.month - 1, years.index(str(d.year)), round(float(value) * 100, 3)]
+                for d, value in monthly.items()]
+        monthly_chart = {"title": "Monthly returns heatmap", "option": {
+            "tooltip": {"formatter": "{c2}%"},
+            "grid": {"left": 65, "right": 25, "top": 25, "bottom": 70},
+            "xAxis": {"type": "category", "data": months},
+            "yAxis": {"type": "category", "data": years},
+            "visualMap": {"min": -20, "max": 20, "calculable": True, "orient": "horizontal",
+                          "left": "center", "bottom": 0,
+                          "inRange": {"color": [red, "#f8fafc", green]}},
+            "series": [{"type": "heatmap", "data": heat,
+                        "label": {"show": len(years) <= 12,
+                                  "formatter": "{c2}%"}}]}}
+        summary = result.summary()
+        rows = [[str(index)] + [None if pd.isna(value) else round(float(value), 6)
+                                 for value in row]
+                for index, row in summary.iterrows()]
+        return report("Backtest", "Rebalanced portfolio growth from observed daily asset returns.",
+                      [growth, drawdown, monthly_chart], ["Measure"] + list(summary.columns), rows)
+
+    if code == "rolling-metrics":
+        window = int(options.get("window", 252))
+        if len(portfolio) < window:
+            raise OptimizationInputError(f"Rolling metrics need at least {window} daily returns.")
+        sharpe = pl_metrics.rolling_sharpe(portfolio, window=window)
+        vol = pl_metrics.rolling_vol(portfolio, window=window)
+        chart = line("Rolling Sharpe and volatility", [("Sharpe", sharpe, navy),
+                                                       ("Volatility", vol, green)], "Ratio / annual vol")
+        return report("Rolling metrics", f"{window}-observation trailing estimates; no future returns used.",
+                      [chart], ["Latest measure", "Value"],
+                      [["Sharpe", round(float(sharpe.dropna().iloc[-1]), 4)],
+                       ["Annual volatility", round(float(vol.dropna().iloc[-1]), 4)]])
+
+    if code == "correlations":
+        corr = pl_cov.corr_from_cov(pl_cov.cov_sample(asset_returns))
+        data = [[j, i, round(float(corr.loc[a, b]), 4)]
+                for i, a in enumerate(symbols) for j, b in enumerate(symbols)]
+        chart = {"title": "Correlation matrix", "option": {
+            "tooltip": {"position": "top", "formatter": "{c2}"},
+            "grid": {"left": 75, "right": 35, "top": 28, "bottom": 60},
+            "xAxis": {"type": "category", "data": symbols},
+            "yAxis": {"type": "category", "data": symbols},
+            "visualMap": {"min": -1, "max": 1, "calculable": True, "orient": "horizontal",
+                          "left": "center", "bottom": 0,
+                          "inRange": {"color": ["#dc2626", "#f8fafc", "#10233f"]}},
+            "series": [{"type": "heatmap", "data": data,
+                        "label": {"show": len(symbols) <= 10},
+                        "emphasis": {"itemStyle": {"shadowBlur": 6}}}]}}
+        rows = [[a] + [round(float(corr.loc[a, b]), 3) for b in symbols] for a in symbols]
+        return report("Correlations", "Pearson correlations of aligned daily asset returns.",
+                      [chart], ["Asset"] + symbols, rows)
+
+    if code == "drawdowns":
+        dd = pl_metrics.drawdown_series(portfolio)
+        episodes = pl_metrics.drawdown_table(portfolio, top=10)
+        rows = [[str(idx)] + [str(v) if pd.isna(v) else round(float(v), 4) if isinstance(v, (float, np.floating)) else str(v)
+                              for v in row] for idx, row in episodes.iterrows()]
+        return report("Drawdown analysis", "Peak-to-trough loss and the deepest observed episodes.",
+                      [line("Portfolio drawdown", [("Drawdown", dd, red)], "Drawdown")],
+                      ["Episode"] + list(episodes.columns), rows)
+
+    if code in ("monte-carlo", "goals"):
+        initial = float(options.get("initial", 10000))
+        years = int(options.get("years", 10))
+        # portlab.monte_carlo defaults to twelve periods/year. Pass compounded
+        # calendar-month returns, never daily returns as if they were monthly.
+        monthly_history = portfolio.resample("ME").apply(lambda r: (1 + r).prod() - 1)
+        if portfolio.index[0].day > 7:
+            monthly_history = monthly_history.iloc[1:]
+        if portfolio.index[-1] < portfolio.index[-1] + pd.offsets.BMonthEnd(0):
+            monthly_history = monthly_history.iloc[:-1]
+        if len(monthly_history) < 12:
+            raise OptimizationInputError("Monte Carlo needs at least twelve months of cached returns.")
+        result = pl_mc.monte_carlo(initial=initial, years=years,
+                                    n_sims=int(options.get("simulations", 1000)),
+                                    model="bootstrap", hist_returns=monthly_history,
+                                    contribution_annual=float(options.get("contribution", 0)), seed=42)
+        percentiles = result.percentiles()
+        # Engine returns a DataFrame of trajectory percentiles; keep its labels.
+        if not isinstance(percentiles, pd.DataFrame):
+            raise EngineUnavailableError("Unexpected Monte Carlo percentile format.")
+        x = [round(i / result.freq, 2) for i in range(len(percentiles))]
+        def trajectory(column):
+            return [round(float(v), 2) for v in percentiles[column]]
+
+        fan_series = []
+        for stack, lower, upper, shade in (
+            ("outer", "p10", "p90", "rgba(16,35,63,.13)"),
+            ("inner", "p25", "p75", "rgba(16,35,63,.23)"),
+        ):
+            fan_series.extend([
+                {"name": f"{lower} baseline", "type": "line", "stack": stack,
+                 "showSymbol": False, "lineStyle": {"opacity": 0},
+                 "itemStyle": {"opacity": 0}, "data": trajectory(lower)},
+                {"name": f"{lower}–{upper} band", "type": "line", "stack": stack,
+                 "showSymbol": False, "lineStyle": {"opacity": 0},
+                 "areaStyle": {"color": shade},
+                 "data": [round(float(hi - lo), 2) for lo, hi in
+                          zip(percentiles[lower], percentiles[upper])]},
+            ])
+        fan_series.append({"name": "Median", "type": "line", "showSymbol": False,
+                           "lineStyle": {"color": green, "width": 2},
+                           "data": trajectory("p50")})
+        chart = {"title": "Simulated balance percentiles", "option": {
+            "tooltip": {"trigger": "axis"}, "legend": {"type": "scroll"},
+            "grid": {"left": 70, "right": 20, "top": 40, "bottom": 55},
+            "xAxis": {"type": "category", "name": "Years", "data": x},
+            "yAxis": {"type": "value", "name": "$ balance"},
+            "series": fan_series}}
+        rows = [[str(column), round(float(percentiles[column].iloc[-1]), 2)]
+                for column in percentiles.columns]
+        if code == "goals":
+            target = float(options.get("target", initial * 2))
+            probability = pl_mc.goal_probability(result, target)
+            chart["option"]["series"].append({"name": "Goal", "type": "line", "symbol": "none",
+                                                "lineStyle": {"type": "dashed", "color": "#d97706"},
+                                                "data": [target] * len(x)})
+            rows.append(["Goal", target])
+            rows.append(["Success probability", round(float(probability["probability"]), 4)])
+        return report("Financial goals" if code == "goals" else "Monte Carlo",
+                      "Bootstrap simulations resample observed portfolio returns; outcomes are uncertain.",
+                      [chart], ["Ending measure", "Value"], rows)
+
+    if code == "factors":
+        import portlab.factor as pl_factor
+        if len(portfolio) < 30 or float(benchmark.var()) == 0:
+            raise OptimizationInputError("Market factor exposure needs 30 aligned returns with benchmark variation.")
+        # One observed market factor is available from the cached benchmark.
+        # Do not label this as an FF3 regression without external factor data.
+        betas = pd.DataFrame({"Benchmark market": [float(asset_returns[s].cov(benchmark) /
+                                                     benchmark.var()) for s in symbols]}, index=symbols)
+        aggregate = pl_factor.portfolio_factor_exposures(pd.Series(weights), betas)
+        values = [round(float(betas.loc[s, "Benchmark market"]), 4) for s in symbols]
+        chart = {"title": "Market exposure by holding", "option": {
+            "tooltip": {"trigger": "axis"}, "grid": {"left": 60, "right": 30},
+            "xAxis": {"type": "value", "name": "Beta"},
+            "yAxis": {"type": "category", "data": symbols},
+            "series": [{"type": "bar", "data": [{"value": v,
+                "itemStyle": {"color": navy if v >= 0 else red}} for v in values]}]}}
+        return report("Factor analysis", "Benchmark market beta is the one factor available from cached prices.",
+                      [chart], ["Holding", "Market beta", "Portfolio weight"],
+                      [[s, values[i], round(weights[s], 4)] for i, s in enumerate(symbols)] +
+                      [["Portfolio", round(float(aggregate.iloc[0]), 4), 1.0]],
+                      ["A multi-factor model needs a dated external factor series; these are market-only exposures."])
+
+    if code == "tactical":
+        import portlab.tactical as pl_tactical
+        window = int(options.get("window", 100))
+        if len(prices) < window + 1:
+            raise OptimizationInputError(f"Moving-average timing needs at least {window + 1} prices.")
+        signal = pl_tactical.ma_timing(prices[symbols], windows=window, weights=weights)
+        focus = symbols[0]
+        close = prices[focus]
+        average = close.rolling(window).mean()
+        chart = line("Price and moving-average signal", [(focus, close.reindex(portfolio.index), navy),
+                         (f"{window}-day average", average.reindex(portfolio.index), green)], "$ price")
+        signal_chart = line("Invested fraction from timing signal", [
+            ("Signal", signal[focus].reindex(portfolio.index), green)], "Exposure")
+        latest = signal.iloc[-1]
+        rows = [[s, round(float(latest[s]), 4)] for s in symbols]
+        return report("Tactical allocation", "Past-price moving-average exposure; signals are not forecasts.",
+                      [chart, signal_chart], ["Holding", "Latest signal exposure"], rows,
+                      ["The chart shows the first holding; the table covers all holdings."])
+
+    if code == "alm":
+        import portlab.alm as pl_alm
+        initial = float(options.get("initial", 100000))
+        payment = float(options.get("payment", 10000))
+        years = int(options.get("years", 10))
+        discount = float(options.get("discount", 3)) / 100
+        if initial <= 0 or payment <= 0 or discount >= 1:
+            raise OptimizationInputError("Enter positive assets and payments, with discount rate below 100%.")
+        schedule = pl_alm.liability_schedule(payment, years)
+        annual = float((1 + portfolio).prod() ** (252 / len(portfolio)) - 1)
+        projection = pl_alm.funded_projection(initial, schedule, annual, discount)
+        x = [str(d.date()) if hasattr(d, "date") else str(d) for d in projection.index]
+        chart = {"title": "Assets versus remaining liabilities", "option": {
+            "tooltip": {"trigger": "axis"}, "legend": {}, "grid": {"left": 70, "right": 25, "bottom": 55},
+            "xAxis": {"type": "category", "data": x}, "yAxis": {"type": "value", "name": "$"},
+            "series": [{"name": name, "type": "line", "showSymbol": False,
+                        "data": [round(float(v), 2) for v in projection[column]]}
+                       for name, column in [("Assets", "assets"), ("PV liabilities", "pv_liabilities")]]}}
+        ratio_chart = {"title": "Funded ratio", "option": {
+            "tooltip": {"trigger": "axis"}, "grid": {"left": 65, "right": 25},
+            "xAxis": {"type": "category", "data": x},
+            "yAxis": {"type": "value", "name": "Assets / PV liabilities"},
+            "series": [{"name": "Funded ratio", "type": "line", "showSymbol": False,
+                        "data": [round(float(v), 4) for v in projection.funded_ratio]}]}}
+        rows = [[x[i], round(float(row.assets), 2), round(float(row.pv_liabilities), 2),
+                 round(float(row.funded_ratio), 4)] for i, row in enumerate(projection.itertuples())]
+        return report("Asset-liability", "Deterministic funded projection using historical portfolio CAGR as an assumption.",
+                      [chart, ratio_chart], ["Period", "Assets", "PV liabilities", "Funded ratio"], rows,
+                      [f"Assumed annual portfolio return: {annual:.2%}; discount rate: {discount:.2%}."])
+
+    if code == "options":
+        import portlab.derivatives as pl_derivatives
+        focus = symbols[0]
+        spot = float(prices[focus].iloc[-1])
+        strike = float(options.get("strike", 0)) or spot
+        expiry = float(options.get("expiry", 1))
+        sigma = float(options.get("volatility", 25)) / 100
+        rate = float(options.get("rate", 3)) / 100
+        kind = options.get("kind", "call")
+        if min(spot, strike, expiry, sigma) <= 0 or sigma >= 5 or rate >= 1:
+            raise OptimizationInputError("Spot, strike, expiry and volatility must be positive; check the rates.")
+        premium = pl_derivatives.bs_price(spot, strike, expiry, rate, sigma, kind=kind)
+        greeks = pl_derivatives.bs_greeks(spot, strike, expiry, rate, sigma, kind=kind)
+        observed_premium = float(options.get("market_premium", 0))
+        underliers = np.linspace(max(.01, spot * .5), spot * 1.5, 81)
+        payoff = np.maximum(underliers - strike, 0) if kind == "call" else np.maximum(strike - underliers, 0)
+        chart = {"title": f"{focus} {kind} payoff at expiry", "option": {
+            "tooltip": {"trigger": "axis"}, "grid": {"left": 65, "right": 25},
+            "xAxis": {"type": "category", "name": "Underlying price", "data": [round(v, 2) for v in underliers]},
+            "yAxis": {"type": "value", "name": "$ profit per share"},
+            "series": [{"type": "line", "showSymbol": False,
+                        "data": [round(float(v - premium), 4) for v in payoff]}]}}
+        rows = ([ ["Model premium", round(float(premium), 4)] ] +
+                [[str(key).title(), round(float(value), 5)] for key, value in greeks.items()])
+        if observed_premium:
+            try:
+                implied = pl_derivatives.implied_vol(observed_premium, spot, strike,
+                                                      expiry, rate, kind=kind)
+            except ValueError as exc:
+                raise OptimizationInputError(f"Observed option premium is infeasible: {exc}") from exc
+            rows.append(["Implied volatility from observed premium", round(float(implied), 5)])
+        return report("Options", "Black–Scholes model premium and expiry profit for one share; no trade is placed.",
+                      [chart], ["Measure", "Value"], rows)
+
+    if code == "technical":
+        import portlab.indicators as pl_indicators
+        focus = symbols[0]
+        close = prices[focus]
+        if len(close) < 35:
+            raise OptimizationInputError("Technical indicators need at least 35 prices.")
+        bands = pl_indicators.bollinger(close)
+        rsi = pl_indicators.rsi(close)
+        macd = pl_indicators.macd(close)
+        pchart = line("Price and Bollinger bands", [(focus, close.reindex(portfolio.index), navy),
+                     ("Upper", bands["Upper"].reindex(portfolio.index), "#94a3b8"),
+                     ("Lower", bands["Lower"].reindex(portfolio.index), "#94a3b8")], "$ price")
+        rsi_chart = line("Relative strength index", [("RSI", rsi.reindex(portfolio.index), green)], "RSI")
+        macd_chart = line("MACD and signal", [("MACD", macd["MACD"].reindex(portfolio.index), navy),
+                          ("Signal", macd["Signal"].reindex(portfolio.index), red)], "Price spread")
+        rows = [["RSI (14)", round(float(rsi.dropna().iloc[-1]), 3)],
+                ["MACD", round(float(macd["MACD"].dropna().iloc[-1]), 4)],
+                ["Bollinger upper", round(float(bands["Upper"].dropna().iloc[-1]), 4)],
+                ["Bollinger lower", round(float(bands["Lower"].dropna().iloc[-1]), 4)]]
+        return report("Technical analysis", f"Indicators for {focus}, the first holding.",
+                      [pchart, rsi_chart, macd_chart], ["Indicator", "Latest value"], rows)
+
+    if code == "forecast":
+        import portlab.forecast as pl_forecast
+        focus = symbols[0]
+        steps = int(options.get("steps", 30))
+        if len(prices) < 50:
+            raise OptimizationInputError("ETS forecasting needs at least 50 prices.")
+        observed = prices[focus].tail(252).reset_index(drop=True)
+        forecast = pl_forecast.ets_forecast(observed, steps=steps)
+        history = [round(float(v), 4) for v in observed.tail(100)]
+        x = list(range(-len(history) + 1, steps + 1))
+        padding = [None] * len(history)
+        series = [{"name": "Observed", "type": "line", "showSymbol": False,
+                   "data": history + [None] * steps}]
+        series.extend([{"name": "95% lower", "type": "line", "stack": "band",
+                        "lineStyle": {"opacity": 0}, "showSymbol": False,
+                        "data": padding + [round(float(v), 4) for v in forecast["lower"]]},
+                       {"name": "95% interval", "type": "line", "stack": "band",
+                        "lineStyle": {"opacity": 0}, "areaStyle": {"color": "rgba(16,35,63,.18)"},
+                        "showSymbol": False,
+                        "data": padding + [round(float(u - l), 4)
+                                           for u, l in zip(forecast["upper"], forecast["lower"])]}])
+        for name, column in (("Forecast", "forecast"), ("Lower 95%", "lower"),
+                             ("Upper 95%", "upper")):
+            series.append({"name": name, "type": "line", "showSymbol": False,
+                           "lineStyle": {"type": "dashed" if column != "forecast" else "solid"},
+                           "data": padding + [round(float(v), 4) for v in forecast[column]]})
+        chart = {"title": "ETS forecast and 95% interval", "option": {
+            "tooltip": {"trigger": "axis"}, "legend": {}, "grid": {"left": 65, "right": 25, "bottom": 48},
+            "xAxis": {"type": "category", "name": "Trading days from vintage", "data": x},
+            "yAxis": {"type": "value", "name": "$ price", "scale": True},
+            "series": series}}
+        rows = [[i + 1] + [round(float(forecast[column].iloc[i]), 4)
+                            for column in ("forecast", "lower", "upper")]
+                for i in range(len(forecast))]
+        return report("Forecast", f"ETS extrapolation of {focus} adjusted price with a widening interval.",
+                      [chart], ["Day", "Forecast", "Lower", "Upper"], rows)
+
+    if code == "stress":
+        import portlab.stress as pl_stress
+        # Shock vectors come from the observed worst calendar month for each
+        # holding, plus a clearly labeled uniform hypothetical shock.
+        monthly_assets = asset_returns.resample("ME").apply(lambda x: (1 + x).prod() - 1)
+        worst = {s: float(monthly_assets[s].min()) for s in symbols}
+        shares = {s: weights[s] * 10000 / float(prices[s].iloc[-1]) for s in symbols}
+        last = {s: float(prices[s].iloc[-1]) for s in symbols}
+        scenarios = {"Observed worst month by asset": worst,
+                     "Uniform -10% shock": {s: -.1 for s in symbols},
+                     "Uniform -20% shock": {s: -.2 for s in symbols}}
+        result = pl_stress.stress_report(shares, last, scenarios)
+        rows = [[name, round(float(item["pnl"]), 2),
+                 round(float(item["portfolio_return"]), 4)] for name, item in result.items()]
+        episodes = pl_backtest.episode_returns(portfolio)
+        for _, episode in episodes.iterrows():
+            start, end = pd.Timestamp(episode["Start"]), pd.Timestamp(episode["End"])
+            if prices.index.min() <= start and prices.index.max() >= end:
+                realized = float(episode["Return"])
+                rows.append([f"Historical: {episode['Episode']}", round(10000 * realized, 2),
+                             round(realized, 4)])
+        names = [row[0] for row in rows]
+        values = [row[1] for row in rows]
+        chart = {"title": "Scenario profit and loss", "option": {
+            "tooltip": {"trigger": "axis"}, "grid": {"left": 90, "right": 30},
+            "xAxis": {"type": "value", "name": "$ P&L"},
+            "yAxis": {"type": "category", "data": names},
+            "series": [{"type": "bar", "data": [{"value": round(v, 2),
+                "itemStyle": {"color": green if v >= 0 else red}} for v in values]}]}}
+        return report("Stress testing", "Scenario shocks applied to a $10,000 portfolio at latest cached prices.",
+                      [chart], ["Scenario", "P&L ($)", "Return"], rows,
+                      ["The observed row combines each asset's worst month, which may have occurred in different months; it is a joint hypothetical shock."])
+
+    if code == "attribution":
+        import portlab.attribution as pl_attribution
+        # SPY has no constituent-sleeve mapping in the cached schema. Use an
+        # explicitly described equal-weight comparator over the entered assets.
+        segment_returns = (1 + asset_returns).prod() - 1
+        equal = 1 / len(symbols)
+        segments = [{"segment": s, "w_p": weights[s], "w_b": equal,
+                     "r_p": float(segment_returns[s]), "r_b": float(segment_returns[s])}
+                    for s in symbols]
+        result = pl_attribution.brinson(segments)
+        effects = ["allocation", "selection", "interaction"]
+        values = [float(result[key]) for key in effects]
+        chart = {"title": "Brinson effects versus equal weights", "option": {
+            "tooltip": {"trigger": "axis"}, "grid": {"left": 85, "right": 25},
+            "xAxis": {"type": "category", "data": [name.title() for name in effects]},
+            "yAxis": {"type": "value", "name": "Return effect"},
+            "series": [{"type": "bar", "data": [{"value": round(v, 6),
+                "itemStyle": {"color": green if v >= 0 else red}} for v in values]}]}}
+        rows = [[str(s)] + [round(float(row[key]), 6) for key in effects + ["total"]]
+                for s, row in result["table"].iterrows()]
+        rows.append(["Total"] + [round(float(result[key]), 6) for key in effects + ["excess_return"]])
+        return report("Attribution", "Brinson decomposition against an equal-weight basket of the same assets.",
+                      [chart], ["Holding", "Allocation", "Selection", "Interaction", "Total"], rows,
+                      ["The benchmark SPY has no constituent mapping here, so this is an equal-weight comparison, not SPY attribution."])
+
+    if code == "tax":
+        import portlab.taxlots as pl_taxlots
+        import portlab.taxopt as pl_taxopt
+        initial = float(options.get("initial", 10000))
+        short = float(options.get("short_rate", 30)) / 100
+        long = float(options.get("long_rate", 15)) / 100
+        if initial <= 0 or not (0 <= short <= 1 and 0 <= long <= 1):
+            raise OptimizationInputError("Enter positive capital and tax rates from 0% to 100%.")
+        ledger = pl_taxlots.LotLedger()
+        first = prices.index[0]
+        last = prices.index[-1]
+        quantities = {}
+        for s in symbols:
+            qty = initial * weights[s] / float(prices[s].iloc[0])
+            ledger.buy(s, first, qty, float(prices[s].iloc[0]))
+            quantities[s] = qty
+        last_prices = {s: float(prices[s].iloc[-1]) for s in symbols}
+        sale_plan = pl_taxlots.tax_aware_sale_plan(
+            ledger, {s: quantities[s] * last_prices[s] for s in symbols},
+            last_prices, as_of=last)
+        values = prices[symbols].mul(pd.Series(quantities)).sum(axis=1)
+        # Hypothetical liquidation tax at each vintage date, based on the
+        # same single acquisition lot. This is not an executed tax strategy.
+        gains = prices[symbols].sub(prices[symbols].iloc[0]).mul(pd.Series(quantities))
+        taxes = []
+        for day, row in gains.iterrows():
+            rate = long if (day - first).days > 365 else short
+            taxes.append(float(row.clip(lower=0).sum()) * rate)
+        after = values.to_numpy() - np.array(taxes)
+        chart = line("Value if liquidated on each date", [("Pre-tax", values.reindex(portfolio.index), navy),
+                 ("After estimated gains tax", pd.Series(after, index=prices.index).reindex(portfolio.index), green)], "$ value")
+        rows = []
+        for symbol, row in sale_plan.iterrows():
+            segments = pl_taxopt.tax_cost_segments(
+                ledger, symbol, last_prices[symbol], st_rate=short, lt_rate=long)
+            marginal = float(segments["marginal_rate"].iloc[0]) if not segments.empty else None
+            tax_due = max(0.0, float(row["est_st_gain"]) * short +
+                      float(row["est_lt_gain"]) * long)
+            rows.append([symbol, round(float(row["proceeds"]), 2),
+                         round(float(row["est_st_gain"]), 2),
+                         round(float(row["est_lt_gain"]), 2),
+                         round(tax_due, 2),
+                         None if marginal is None else round(marginal, 5)])
+        candidates = ledger.harvest_candidates(last_prices, as_of=last)
+        return report("Tax-aware", "Single purchase lot per holding at the start date; estimated liquidation tax through time.",
+                      [chart], ["Holding", "Proceeds ($)", "Short-term gain ($)",
+                                "Long-term gain ($)", "Estimated tax ($)", "Marginal tax cost / sale dollar"],
+                      rows,
+                      [f"{len(candidates)} loss lots are potential harvest candidates at this vintage.",
+                       "Rates and the one-lot purchase history are assumptions; no sale or harvest is executed."])
+
+    raise OptimizationInputError("This report has not been wired to the engine yet.")
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------

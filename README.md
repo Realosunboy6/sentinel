@@ -101,7 +101,7 @@ export SECRET_KEY=dev-only-secret
 pytest
 ```
 
-Expected: **167 tests: all pass on PostgreSQL; SQLite skips one production row-lock test** (M0 through M3, including acceptance follow-ups).
+M0–M3 baseline: **167 tests passed on PostgreSQL**. M4 adds fixture-backed tool coverage; on SQLite, the production row-lock test is skipped. See the current [M4 gate record](m4-tools-plan.md) for validation status.
 
 PowerShell equivalent:
 
@@ -140,7 +140,7 @@ sentinel/
     core/                       ← securities-list page, base templates
     marketdata/                 ← Security/PriceHistory models, ingestion, sources
     analysis/                   ← Analysis/Preset models, engine adapter (M1+)
-    tools/                      ← 18 tool pages (M4)
+    tools/                      ← 19-card gallery and tool pages (M4)
   templates/                    ← base.html + per-app templates
   static/                       ← styles.css, echarts.min.js (M1)
   docs/design/                  ← design package (mockups, schema, snippets)
@@ -158,7 +158,7 @@ sentinel/
 | **M1** Local repair gate | Corrected Analyzer/cache/JSON API/charts; goldens unchanged |
 | **M2** Local repair gate | RiskLens + web anchors + shared editor + ES99 |
 | **M3** Ready for review | Optimizer/risk-parity/rolling; shared data fixes; 167 tests pass |
-| M4 | All 19 tool pages |
+| **M4** Local implementation; gate open | All 19 cards and 15 new reports; PostgreSQL and mobile screenshot checks pending |
 | M5 | Hardening + deploy |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).

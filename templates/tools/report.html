@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ tool.name }} | Sentinel{% endblock %}
+{% block extra_head %}<style>
+.tool-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+.tool-head a{color:#0b7a56;text-decoration:none}
+.tool-input,.tool-panel{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin:16px 0;box-shadow:0 1px 2px rgba(16,35,63,.05)}
+.tool-params{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.tool-params label{display:flex;flex-direction:column;gap:5px;min-width:180px;font-size:13px;font-weight:600}
+.tool-params input,.tool-params select{padding:9px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}
+.tool-chart{width:100%;height:350px}
+.tool-table{overflow:auto}.tool-table table{border-collapse:collapse;width:100%;font-size:13px}
+.tool-table th,.tool-table td{border-bottom:1px solid #e2e8f0;padding:9px;text-align:right;white-space:nowrap}
+.tool-table th:first-child,.tool-table td:first-child{text-align:left}
+.tool-caption{color:#64748b;font-size:13px}.tool-warning{color:#92400e}
+</style>{% endblock %}
+{% block content %}
+<div class="tool-head"><h1>{{ tool.name }}</h1><a href="{% url 'tool_gallery' %}">All tools →</a></div>
+<form method="post" class="tool-input" data-portfolio-form>{% csrf_token %}
+  {% if analysis %}<input type="hidden" name="slug" value="{{ analysis.slug }}">{% endif %}
+  <h2>Portfolio inputs</h2>
+  {% include "analysis/_portfolio_fields.html" %}
+  <div class="tool-params">{% for param in params %}<label>{{ param.label }}
+    {% if param.kind == 'choice' %}<select name="{{ param.key }}">{% for choice in param.choices %}<option value="{{ choice }}" {% if choice == param.value %}selected{% endif %}>{{ choice|capfirst }}</option>{% endfor %}</select>
+    {% else %}<input name="{{ param.key }}" type="number" step="{% if param.kind == 'integer' %}1{% else %}any{% endif %}" value="{{ param.value }}">{% endif %}
+    {% if param.error %}<span class="tool-warning">{{ param.error }}</span>{% endif %}
+  </label>{% endfor %}</div>
+  <button class="btn btn-primary" type="submit">Run {{ tool.name }}</button>
+</form>
+{% for warning in warnings %}<p class="tool-warning" role="status">{{ warning }}</p>{% endfor %}
+{% if report %}
+  <p class="tool-caption">{{ report.caption }} History through {{ report.asof }}.</p>
+  {% for chart in report.charts %}<section class="tool-panel"><h2>{{ chart.title }}</h2><div class="tool-chart" id="tool-chart-{{ forloop.counter0 }}" role="img" aria-label="{{ chart.title }}"></div></section>{% endfor %}
+  <section class="tool-panel"><h2>Results</h2><div class="tool-table"><table><thead><tr>{% for column in report.columns %}<th>{{ column }}</th>{% endfor %}</tr></thead><tbody>{% for row in report.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div></section>
+  {% for note in report.notes %}<p class="tool-caption">{{ note }}</p>{% endfor %}
+  {{ report.charts|json_script:"tool-chart-data" }}
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}
+{% include "analysis/_portfolio_scripts.html" %}
+{% if report %}<script src="{% static 'echarts.min.js' %}"></script><script>
+const reports=JSON.parse(document.getElementById('tool-chart-data').textContent);
+reports.forEach((report,i)=>{const el=document.getElementById(`tool-chart-${i}`);const chart=echarts.init(el);chart.setOption(report.option);window.addEventListener('resize',()=>chart.resize())});
+</script>{% endif %}
+{% endblock %}

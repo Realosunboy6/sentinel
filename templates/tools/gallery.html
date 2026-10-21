@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}All tools | Sentinel{% endblock %}
+{% block extra_head %}<style>
+.tools-intro{color:#64748b;max-width:690px;margin:0 0 1.5rem}
+.tools-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:24px 0 40px}
+.tool-card{display:block;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;box-shadow:0 1px 2px rgba(16,35,63,.05);text-decoration:none;color:#10233f}
+.tool-card:hover{border-color:#0e9f6e;box-shadow:0 4px 16px rgba(16,35,63,.1)}
+.tool-card h2{font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:center;margin:0}
+.tool-card p{color:#64748b;font-size:13px;margin:8px 0 0}
+.tool-card img{display:block;width:100%;height:170px;object-fit:contain;margin-top:8px}
+.tool-card .preview-matrix{height:170px;display:grid;place-items:center;overflow:hidden}
+.preview-matrix table{border-collapse:separate;border-spacing:3px;font-size:11px}
+.preview-matrix td,.preview-matrix th{min-width:34px;text-align:center;padding:6px 3px}
+.preview-matrix td{background:#5c6f88;color:#fff;border-radius:2px}
+.preview-matrix td.diag{background:#10233f}
+.tag{font-size:10px;font-weight:700;padding:3px 7px;border-radius:99px;white-space:nowrap;background:#eef2f7;color:#475569}
+.tag.extra{background:#e8f5ef;color:#0b7a56}
+@media(max-width:860px){.tools-grid{grid-template-columns:1fr}}
+</style>{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Every tool ships with a picture</h1><span class="meta">19 tools · each with a signature visualization</span></div>
+<p class="tools-intro">Explore a portfolio from different angles. Each report begins with a chart you can inspect, followed by the numbers behind it.</p>
+<div class="tools-grid">
+{% for card in cards %}<a class="tool-card" href="{{ card.url }}">
+  <h2>{{ card.name }} <span class="tag{% if card.beyond %} extra{% endif %}">{% if card.beyond %}BEYOND PV{% else %}PV PARITY{% endif %}</span></h2>
+  {% if card.preview != 'corr_heatmap.html' %}<img src="{% static 'tool-previews/' %}{{ card.preview }}?v=3" alt="{{ card.caption }}">{% else %}{% include "tools/_correlation_preview.html" %}{% endif %}
+  <p>{{ card.caption }}</p>
+</a>{% endfor %}
+</div>
+{% endblock %}
