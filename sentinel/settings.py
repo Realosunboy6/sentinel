@@ -141,7 +141,7 @@ STORAGES = {
         # always uses immutable hashed assets from the container build.
         "BACKEND": (
             "django.contrib.staticfiles.storage.StaticFilesStorage"
-            if "pytest" in sys.modules
+            if DEBUG or "pytest" in sys.modules
             else PRODUCTION_STATICFILES_BACKEND
         )
     },

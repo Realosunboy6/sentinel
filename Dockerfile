@@ -23,6 +23,6 @@ USER sentinel
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/healthz',timeout=3)"
+    CMD python -c "import os,urllib.request; url='http://127.0.0.1:'+os.environ.get('PORT','8000')+'/healthz'; request=urllib.request.Request(url,headers={'X-Forwarded-Proto':'https'}); urllib.request.urlopen(request,timeout=3)"
 
 CMD ["sh", "-c", "gunicorn sentinel.wsgi:application --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-2} --access-logfile - --error-logfile -"]

@@ -48,12 +48,17 @@ def test_unknown_route_uses_friendly_404(client):
 
 
 def test_server_error_returns_safe_log_reference(caplog):
-    response = server_error(RequestFactory().get("/failed"))
+    try:
+        raise RuntimeError("private server failure")
+    except RuntimeError:
+        response = server_error(RequestFactory().get("/failed"))
     body = response.content.decode()
     assert response.status_code == 500
     assert "Request failed" in body
     reference = re.search(r"<strong>([0-9a-f]{12})</strong>", body).group(1)
     assert reference in caplog.text
+    assert "private server failure" in caplog.text
+    assert "private server failure" not in body
 
 
 @pytest.mark.django_db

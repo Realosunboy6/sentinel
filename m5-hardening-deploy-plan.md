@@ -114,3 +114,12 @@ the M5 gate.
 - Deployment steps 6–9 remain open: no platform/domain has been selected, no
   production service or scheduler exists, and no owner walkthrough has run.
 
+- The 2026-10-22 deployment re-review defects were corrected before push:
+  the internal health probe declares forwarded HTTPS, PostgreSQL binds only
+  to loopback on the host, debug mode avoids manifest storage, and generic
+  500 logs include the traceback correlated to the visitor reference.
+- The corrected M5 tests, migration check, deployment check, static collection,
+  and diff check pass. A subsequent full-suite rerun is blocked on this host by
+  Windows Application Control rejecting unsigned Statsmodels extension modules;
+  no security policy was weakened. The 195-pass result above predates that host
+  policy failure and remains the latest completed full-suite result.

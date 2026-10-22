@@ -28,7 +28,7 @@ def page_not_found(request, exception):
 
 def server_error(request):
     reference = uuid.uuid4().hex[:12]
-    logger.error("Unhandled web error reference=%s", reference)
+    logger.error("Unhandled web error reference=%s", reference, exc_info=True)
     return render(request, "500.html", {"error_reference": reference}, status=500)
 
 
