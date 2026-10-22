@@ -24,8 +24,9 @@ to the locked DDL, runs Django deployment/static checks, executes the full test
 suite including PostgreSQL concurrency, and builds the container without
 publishing it.
 
-The workflow result is pending until this revision is pushed. A red golden,
-SPY-anchor, schema, concurrency, deployment, or container result blocks release.
+The workflow is present on `main`; its PostgreSQL and container results remain
+pending. A red golden, SPY-anchor, schema, concurrency, deployment, or container
+result blocks release.
 
 ## Gate still open
 

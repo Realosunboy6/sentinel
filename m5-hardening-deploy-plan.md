@@ -126,7 +126,7 @@ the M5 gate.
 - A true 390 x 844 Edge emulation pass on 2026-10-22 found no horizontal
   overflow on `/`, `/analyze`, `/risk`, `/optimize`, `/tools/`, or
   `/securities/`. Each document width stayed within its 390 px viewport.
-- The next repository revision adds `requirements.lock` plus a Linux GitHub
+- Revision `3be5cb4` adds `requirements.lock` plus a Linux GitHub
   Actions gate for PostgreSQL 15 migrations, locked-schema comparison, Django
-  deployment checks, static collection, the full suite, and a non-pushed
-  container build. Results remain pending until that revision is pushed.
+  deployment checks, static collection, the full suite, and a container build
+  without registry publication. Results remain pending.

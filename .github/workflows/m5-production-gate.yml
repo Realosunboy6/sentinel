@@ -1,6 +1,7 @@
 name: M5 production gate
+run-name: M5 production gate for ${{ github.sha }}
 
-on:
+"on":
   workflow_dispatch:
   pull_request:
   push:
