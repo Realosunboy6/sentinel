@@ -7,5 +7,7 @@ numpy>=1.26
 scipy>=1.13
 yfinance>=0.2.40
 portlab[opt]==0.2.2
+gunicorn>=23,<24
+whitenoise>=6.8,<7
 pytest>=8.2
 pytest-django>=4.8

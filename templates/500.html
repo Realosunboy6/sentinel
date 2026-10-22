@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Request failed | Sentinel{% endblock %}
+{% block content %}
+<div style="max-width:520px;margin:4rem auto;text-align:center">
+  <h1>Request failed</h1>
+  <p style="color:#64748b">Sentinel could not complete this request. Give the site operator this reference:</p>
+  <p><strong>{{ error_reference }}</strong></p>
+  <a class="btn btn-outline" href="/">Back to home</a>
+</div>
+{% endblock %}

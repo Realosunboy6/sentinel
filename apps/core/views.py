@@ -1,7 +1,35 @@
+import logging
+import uuid
+
+from django.http import JsonResponse
 from django.shortcuts import render
+from django.db import connection
 from django.db.models import Count, Max
 
 from apps.marketdata.models import Security
+
+logger = logging.getLogger(__name__)
+
+
+def health_view(request):
+    """Database-backed readiness check without exposing connection details."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:
+        return JsonResponse({"status": "unavailable"}, status=503)
+    return JsonResponse({"status": "ok"})
+
+
+def page_not_found(request, exception):
+    return render(request, "404.html", status=404)
+
+
+def server_error(request):
+    reference = uuid.uuid4().hex[:12]
+    logger.error("Unhandled web error reference=%s", reference)
+    return render(request, "500.html", {"error_reference": reference}, status=500)
 
 
 def securities_list(request):

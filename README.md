@@ -125,6 +125,55 @@ serving, and the vintage label on every results page shows the stale date.
 
 ---
 
+## Production container and release procedure
+
+The repository includes a Linux container running gunicorn with WhiteNoise
+static assets. PostgreSQL remains a separate persistent service. Before a
+release, set a long random `SECRET_KEY`, `POSTGRES_PASSWORD`, the public
+`ALLOWED_HOSTS`, and the full HTTPS origin in `CSRF_TRUSTED_ORIGINS`.
+
+For local container verification:
+
+```bash
+export SECRET_KEY='replace-with-at-least-50-random-characters'
+export POSTGRES_PASSWORD='replace-with-a-database-password'
+docker compose build
+docker compose up -d db
+docker compose run --rm web python manage.py migrate
+docker compose run --rm web python manage.py seed_presets
+docker compose up -d web
+curl --fail http://localhost:8000/healthz
+```
+
+For an HTTPS deployment, also set:
+
+```bash
+export ALLOWED_HOSTS='sentinel.example.com'
+export CSRF_TRUSTED_ORIGINS='https://sentinel.example.com'
+export SESSION_COOKIE_SECURE=True
+export CSRF_COOKIE_SECURE=True
+export SECURE_SSL_REDIRECT=True
+export SECURE_HSTS_SECONDS=31536000
+```
+
+Run migrations as an explicit release step before switching traffic. The
+rollback point is the previous container image; do not reverse a migration
+until its data effect has been reviewed. Database backup and restore commands
+depend on the selected host and must be recorded in the M5 gate report.
+
+The weekday refresh command remains:
+
+```bash
+python manage.py refresh_prices
+```
+
+Schedule it for `01:00 UTC` and retain stdout/stderr with the platform logs.
+Per-symbol failures return a nonzero exit status but do not remove the prior
+cache. Inspect application errors by the 12-character reference shown to the
+visitor.
+
+---
+
 ## Repository layout
 
 ```
@@ -159,7 +208,7 @@ sentinel/
 | **M2** Local repair gate | RiskLens + web anchors + shared editor + ES99 |
 | **M3** Ready for review | Optimizer/risk-parity/rolling; shared data fixes; 167 tests pass |
 | **M4** Local implementation; gate open | All 19 cards and 15 new reports; PostgreSQL and mobile screenshot checks pending |
-| M5 | Hardening + deploy |
+| **M5** In progress | Local hardening/container artifact complete; PostgreSQL, host deployment and walkthrough open |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
 M3 validation and calculation conventions: [gate report](docs/m3-gate.md).
