@@ -24,14 +24,19 @@ to the locked DDL, runs Django deployment/static checks, executes the full test
 suite including PostgreSQL concurrency, and builds the container without
 publishing it.
 
-The workflow is present on `main`; its PostgreSQL and container results remain
-pending. A red golden, SPY-anchor, schema, concurrency, deployment, or container
-result blocks release.
+GitHub Actions run
+[`39864309343`](https://github.com/Realosunboy6/sentinel/actions/runs/39864309343)
+passed on revision `03a8dce`: **196 tests passed in 31.06 seconds** on
+PostgreSQL 15.19, including the PostgreSQL concurrency test. The locked-schema
+comparison, migration check, Django deployment check, static collection, and
+container build also passed. A red golden, SPY-anchor, schema, concurrency,
+deployment, or container result blocks release.
 
 The first run proved the container build, PostgreSQL migration/schema check,
 deployment check, and static collection. Its suite step was invalidated by the
 CI environment redirecting Django test-client HTTP requests to HTTPS; the test
 step now disables only that redirect after the production deployment check.
+The corrected run above passed fully.
 
 ## Gate still open
 

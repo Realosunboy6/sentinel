@@ -129,4 +129,6 @@ the M5 gate.
 - Revision `3be5cb4` adds `requirements.lock` plus a Linux GitHub
   Actions gate for PostgreSQL 15 migrations, locked-schema comparison, Django
   deployment checks, static collection, the full suite, and a container build
-  without registry publication. Results remain pending.
+  without registry publication. Corrected run `39864309343` passed all jobs on
+  revision `03a8dce`: 196 tests passed on PostgreSQL 15.19 in 31.06 seconds,
+  and the container build passed.

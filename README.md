@@ -209,11 +209,12 @@ sentinel/
 | **M1** Local repair gate | Corrected Analyzer/cache/JSON API/charts; goldens unchanged |
 | **M2** Local repair gate | RiskLens + web anchors + shared editor + ES99 |
 | **M3** Ready for review | Optimizer/risk-parity/rolling; shared data fixes; 167 tests pass |
-| **M4** Local implementation; gate open | All 19 cards and 15 new reports; 390 px review passed, PostgreSQL gate pending |
-| **M5** In progress | Local hardening and CI/container gate prepared; PostgreSQL run, host deployment and walkthrough open |
+| **M4** Complete | All 19 cards and 15 new reports; 390 px review and PostgreSQL gate passed |
+| **M5** In progress | Hardening, 196-test PostgreSQL gate and container build passed; host deployment and walkthrough open |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
 M3 validation and calculation conventions: [gate report](docs/m3-gate.md).
+M5 validation and remaining deployment gate: [gate report](docs/m5-gate.md).
 Current repair evidence and remaining limits: [repair acceptance](docs/repair-acceptance.md).
 Earlier findings: [build-contract review](docs/build-contract-audit.md), [outline review](docs/plan-outline-review.md).
 
