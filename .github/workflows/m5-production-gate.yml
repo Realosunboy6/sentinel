@@ -1,0 +1,68 @@
+name: M5 production gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel-ci-password
+          POSTGRES_DB: sentinel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://sentinel:sentinel-ci-password@127.0.0.1:5432/sentinel
+      SECRET_KEY: ci-only-sentinel-secret-key-with-more-than-fifty-characters-2026
+      DEBUG: "False"
+      ALLOWED_HOSTS: sentinel.example.test
+      CSRF_TRUSTED_ORIGINS: https://sentinel.example.test
+      SESSION_COOKIE_SECURE: "True"
+      CSRF_COOKIE_SECURE: "True"
+      SECURE_SSL_REDIRECT: "True"
+      SECURE_HSTS_SECONDS: "31536000"
+      SECURE_HSTS_INCLUDE_SUBDOMAINS: "True"
+      SECURE_HSTS_PRELOAD: "True"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.lock
+      - run: python manage.py migrate --noinput
+      - run: python scripts/verify_postgres_schema.py
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py check --deploy
+      - run: python manage.py collectstatic --noinput
+      - run: python -m pytest
+
+  container-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: sentinel:${{ github.sha }}

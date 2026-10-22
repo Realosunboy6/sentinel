@@ -8,9 +8,9 @@ WORKDIR /app
 
 RUN addgroup --system sentinel && adduser --system --ingroup sentinel sentinel
 
-COPY requirements.txt ./
+COPY requirements.txt requirements.lock ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.lock
 
 COPY . .
 RUN SECRET_KEY=collect-static-only \

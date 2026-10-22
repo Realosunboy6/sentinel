@@ -128,7 +128,9 @@ serving, and the vintage label on every results page shows the stale date.
 ## Production container and release procedure
 
 The repository includes a Linux container running gunicorn with WhiteNoise
-static assets. PostgreSQL remains a separate persistent service. Before a
+static assets. Docker and the M5 GitHub Actions gate install the exact versions
+in `requirements.lock`; update that lock only after running the full PostgreSQL
+gate. PostgreSQL remains a separate persistent service. Before a
 release, set a long random `SECRET_KEY`, `POSTGRES_PASSWORD`, the public
 `ALLOWED_HOSTS`, and the full HTTPS origin in `CSRF_TRUSTED_ORIGINS`.
 
@@ -207,8 +209,8 @@ sentinel/
 | **M1** Local repair gate | Corrected Analyzer/cache/JSON API/charts; goldens unchanged |
 | **M2** Local repair gate | RiskLens + web anchors + shared editor + ES99 |
 | **M3** Ready for review | Optimizer/risk-parity/rolling; shared data fixes; 167 tests pass |
-| **M4** Local implementation; gate open | All 19 cards and 15 new reports; PostgreSQL and mobile screenshot checks pending |
-| **M5** In progress | Local hardening/container artifact complete; PostgreSQL, host deployment and walkthrough open |
+| **M4** Local implementation; gate open | All 19 cards and 15 new reports; 390 px review passed, PostgreSQL gate pending |
+| **M5** In progress | Local hardening and CI/container gate prepared; PostgreSQL run, host deployment and walkthrough open |
 
 M2 validation and calculation conventions: [gate report](docs/m2-gate.md).
 M3 validation and calculation conventions: [gate report](docs/m3-gate.md).

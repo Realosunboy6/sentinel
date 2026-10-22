@@ -123,3 +123,10 @@ the M5 gate.
   Windows Application Control rejecting unsigned Statsmodels extension modules;
   no security policy was weakened. The 195-pass result above predates that host
   policy failure and remains the latest completed full-suite result.
+- A true 390 x 844 Edge emulation pass on 2026-10-22 found no horizontal
+  overflow on `/`, `/analyze`, `/risk`, `/optimize`, `/tools/`, or
+  `/securities/`. Each document width stayed within its 390 px viewport.
+- The next repository revision adds `requirements.lock` plus a Linux GitHub
+  Actions gate for PostgreSQL 15 migrations, locked-schema comparison, Django
+  deployment checks, static collection, the full suite, and a non-pushed
+  container build. Results remain pending until that revision is pushed.
