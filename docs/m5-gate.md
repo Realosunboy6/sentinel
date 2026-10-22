@@ -28,6 +28,11 @@ The workflow is present on `main`; its PostgreSQL and container results remain
 pending. A red golden, SPY-anchor, schema, concurrency, deployment, or container
 result blocks release.
 
+The first run proved the container build, PostgreSQL migration/schema check,
+deployment check, and static collection. Its suite step was invalidated by the
+CI environment redirecting Django test-client HTTP requests to HTTPS; the test
+step now disables only that redirect after the production deployment check.
+
 ## Gate still open
 
 M5 is not complete until a host and domain are selected, HTTPS and persistent

@@ -54,7 +54,12 @@ jobs:
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py check --deploy
       - run: python manage.py collectstatic --noinput
-      - run: python -m pytest
+      - name: Run full PostgreSQL suite
+        run: python -m pytest
+        env:
+          # Django's test client issues HTTP requests. Production redirect
+          # behavior is verified by the preceding deploy check.
+          SECURE_SSL_REDIRECT: "False"
 
   container-build:
     runs-on: ubuntu-latest
