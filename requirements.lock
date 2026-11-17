@@ -33,7 +33,7 @@ peewee==4.5.3
 platformdirs==4.13.5
 plotly==7.1.0
 pluggy==1.7.0
-portlab==0.2.2
+portlab==0.3.0
 protobuf==7.36.2
 psycopg==3.3.6
 psycopg-binary==3.3.6

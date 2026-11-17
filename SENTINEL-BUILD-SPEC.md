@@ -39,7 +39,7 @@ with a signature interactive chart for every tool.
 4. **Requests never call the market-data source.** All analysis reads from
    the local `price_history` cache, refreshed by a nightly job (§6).
 5. **The analysis engine is `portlab`, now a public MIT library**
-   (`Realosunboy6/portlab`, pinned at `portlab==0.2.2` on PyPI).
+   (`Realosunboy6/portlab`, pinned at `portlab==0.3.0` on PyPI).
    Install it as a pinned dependency, never vendor or copy its
    source into this repo (§5). As of the 2026-10-16 amendment (§5)
    the library is complete: every module this spec names is in the
@@ -127,14 +127,23 @@ rebalance), `backtest`, `optimize`, `attribution`, `rebalance`,
 `tactical`, `forecast`, `stress`, `scenarios`, `taxlots`, `taxopt`,
 `mpo`, `analytics`, `data`, `plots`, `report`. This supersedes the
 2026-10-12 amendment (which published a v0.1.0 core and held the
-rest back) in every respect where they differ. Therefore:
+rest back) in every respect where they differ.
+
+**Amendment 2026-11-16: the engine pin moves to portlab 0.3.0.**
+0.3.0 adds `optimize.sparse_max_sharpe` (cardinality-constrained
+maximum-Sharpe portfolios whose results carry their certification
+status); no existing engine function changed, and the golden
+figures in `tests/fixtures/k5_golden.json` are unchanged. The pin
+in §1 and below reads 0.3.0 from this amendment.
+
+Therefore:
 
 - **Never** copy portlab source into this repo, not even a single
   module: install it as a dependency instead.
 - Access pattern (DEFAULT): an adapter module `apps/analysis/engine.py`
   that is the *only* place importing `portlab`. Install pinned from
-  PyPI: `pip install portlab==0.2.2` (add the `opt` extra,
-  `portlab[opt]==0.2.2`, for the cvxpy solver backend). All engine
+  PyPI: `pip install portlab==0.3.0` (add the `opt` extra,
+  `portlab[opt]==0.3.0`, for the cvxpy solver backend). All engine
   calls go through the adapter, which converts Django-side inputs
   (symbols, weights, dates) to portlab's pandas inputs and converts
   results to JSON-safe dicts.

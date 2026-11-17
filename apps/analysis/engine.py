@@ -56,7 +56,7 @@ def run_tool_report(code, returns, prices, weights, benchmark, options):
         import portlab.montecarlo as pl_mc
         import portlab.covariance as pl_cov
     except ImportError as exc:
-        raise EngineUnavailableError("portlab[opt]==0.2.2 is required for tool reports.") from exc
+        raise EngineUnavailableError("portlab[opt]==0.3.0 is required for tool reports.") from exc
 
     symbols = list(weights)
     asset_returns = returns[symbols]
@@ -562,7 +562,7 @@ def run_analysis(
     except ImportError as exc:
         raise EngineUnavailableError(
             f"portlab is not importable: {exc}.  "
-            "Install it with: pip install portlab[opt]==0.2.2"
+            "Install it with: pip install portlab[opt]==0.3.0"
         ) from exc
 
     try:
@@ -924,7 +924,7 @@ def run_risklens(
     except ImportError as exc:
         raise EngineUnavailableError(
             f"portlab is not importable: {exc}.  "
-            "Install it with: pip install portlab[opt]==0.2.2"
+            "Install it with: pip install portlab[opt]==0.3.0"
         ) from exc
 
     try:
